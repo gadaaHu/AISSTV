@@ -1,0 +1,106 @@
+﻿services:
+  postgres:
+    image: postgres:16
+    container_name: attendance-postgres
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: attendance
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d attendance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: attendance-mosquitto
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -t health -m ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  camera-control:
+    build: ./camera-control/backend
+    container_name: attendance-camera-control
+    environment:
+      ENV: dev
+      DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/attendance
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      HLS_OUTPUT_DIR: /var/lib/camera-control/hls
+      RECORDINGS_DIR: /var/lib/camera-control/recordings
+      SNAPSHOTS_DIR: /var/lib/camera-control/snapshots
+      CORS_ORIGINS: '["http://localhost:3100"]'
+    ports:
+      - "8100:8100"
+    volumes:
+      - camera_hls:/var/lib/camera-control/hls
+      - camera_recordings:/var/lib/camera-control/recordings
+      - camera_snapshots:/var/lib/camera-control/snapshots
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+
+  camera-control-ui:
+    build: ./camera-control/frontend
+    container_name: attendance-camera-control-ui
+    ports:
+      - "3100:80"
+    depends_on:
+      - camera-control
+
+  backend:
+    build: ./backend
+    container_name: attendance-backend
+    environment:
+      ENV: dev
+      DATABASE_URL: postgresql+asyncpg://app:app@postgres:5432/attendance
+      MQTT_HOST: mosquitto
+      MQTT_PORT: "1883"
+      MQTT_TOPIC: attendance/+/+/+/events
+      MQTT_CLIENT_ID: backend-consumer
+      JWT_SECRET: dev-secret-change-me-in-production
+      JWT_EXPIRE_MINUTES: "480"
+      BOOTSTRAP_ADMIN_USER: admin
+      BOOTSTRAP_ADMIN_PASSWORD: admin123
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head &&
+             python -m scripts.seed &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build: ./frontend
+    container_name: attendance-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  mosquitto_data:
+  camera_hls:
+  camera_recordings:
+  camera_snapshots:

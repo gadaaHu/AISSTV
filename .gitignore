@@ -1,0 +1,43 @@
+# secrets — NEVER commit these
+.env
+*.env
+!*.env.example
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# node
+node_modules/
+dist/
+.vite/
+
+# flutter
+.dart_tool/
+build/
+*.g.dart
+*.freezed.dart
+
+# data (never commit)
+*.db
+*.sqlite
+*.npz
+gallery.npz
+watchlist.npz
+queue-*.db
+
+# media
+snapshots/
+evidence/
+*.mp4
+
+# os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
