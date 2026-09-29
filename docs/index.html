@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+<title>AISSTV — AI Security Camera & Attendance</title>
+<meta name="description" content="Face-recognition attendance, leave management, and workplace safety in one platform. Built with Python, FastAPI, PostgreSQL, React, and Flutter." />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --brand: #3b82f6;
+    --brand-hover: #2563eb;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --mono: 'SF Mono', 'Consolas', monospace;
+  }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-inner {
+    display: flex; justify-content: space-between; align-items: center;
+    height: 64px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 17px; color: var(--text);
+    text-decoration: none;
+  }
+  .brand-mark {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: var(--brand); display: grid; place-items: center;
+    font-weight: bold; color: white;
+  }
+  .nav-links { display: flex; gap: 24px; }
+  .nav-links a {
+    color: var(--muted); text-decoration: none; font-size: 14px;
+    font-weight: 500; transition: color 0.15s;
+  }
+  .nav-links a:hover { color: var(--text); }
+  .nav-cta {
+    background: var(--brand); color: white !important;
+    padding: 8px 16px; border-radius: 8px; font-size: 13px !important;
+  }
+  .nav-cta:hover { background: var(--brand-hover); }
+
+  /* hero */
+  .hero { padding: 96px 0 80px; text-align: center; }
+  .hero .eyebrow {
+    display: inline-block;
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--brand);
+    padding: 6px 14px; border: 1px solid var(--brand);
+    border-radius: 999px; margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 5vw, 60px);
+    font-weight: 800; letter-spacing: -0.02em;
+    line-height: 1.1; margin-bottom: 24px;
+    background: linear-gradient(to bottom, #ffffff, #cbd5e1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero .lead {
+    font-size: 19px; color: var(--muted);
+    max-width: 720px; margin: 0 auto 40px;
+  }
+  .cta-row {
+    display: flex; gap: 12px; justify-content: center;
+    flex-wrap: wrap; margin-bottom: 48px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 24px; border-radius: 10px;
+    font-weight: 600; font-size: 14px; text-decoration: none;
+    transition: all 0.15s; border: 1px solid transparent;
+  }
+  .btn-primary {
+    background: var(--brand); color: white;
+  }
+  .btn-primary:hover {
+    background: var(--brand-hover); transform: translateY(-1px);
+    box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+  }
+  .btn-secondary {
+    background: var(--surface); color: var(--text);
+    border-color: var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--muted); }
+
+  /* stats */
+  .stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px;
+    padding: 48px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .stat-num {
+    font-size: 32px; font-weight: 800; color: var(--brand);
+    letter-spacing: -0.02em;
+  }
+  .stat-label {
+    font-size: 13px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-top: 4px;
+  }
+
+  /* sections */
+  section { padding: 96px 0; }
+  .section-header {
+    text-align: center; margin-bottom: 64px;
+  }
+  .section-header h2 {
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 800; letter-spacing: -0.02em;
+    margin-bottom: 16px;
+  }
+  .section-header p {
+    font-size: 17px; color: var(--muted);
+    max-width: 640px; margin: 0 auto;
+  }
+
+  /* features */
+  .features {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+  }
+  .feature {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 28px;
+    transition: all 0.15s;
+  }
+  .feature:hover {
+    border-color: var(--brand); transform: translateY(-2px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  }
+  .feature-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(59, 130, 246, 0.15);
+    display: grid; place-items: center;
+    font-size: 20px; margin-bottom: 16px;
+    color: var(--brand);
+  }
+  .feature h3 {
+    font-size: 17px; font-weight: 700; margin-bottom: 8px;
+  }
+  .feature p {
+    font-size: 14px; color: var(--muted); line-height: 1.6;
+  }
+
+  /* architecture */
+  .arch {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 40px;
+    font-family: var(--mono); font-size: 13px;
+    white-space: pre; overflow-x: auto;
+    color: var(--text); line-height: 1.7;
+  }
+
+  /* stack */
+  .stack-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;
+  }
+  .stack-group h4 {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--brand); margin-bottom: 16px;
+  }
+  .stack-group ul { list-style: none; }
+  .stack-group li {
+    font-size: 14px; padding: 6px 0;
+    color: var(--muted); position: relative; padding-left: 20px;
+  }
+  .stack-group li::before {
+    content: '→'; position: absolute; left: 0; color: var(--brand);
+  }
+
+  /* cta */
+  .cta-section {
+    text-align: center; padding: 96px 0;
+    background: linear-gradient(180deg, transparent, rgba(59, 130, 246, 0.05));
+  }
+  .cta-section h2 {
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 800; margin-bottom: 16px;
+  }
+  .cta-section p {
+    color: var(--muted); font-size: 17px; margin-bottom: 32px;
+  }
+
+  /* footer */
+  footer {
+    padding: 40px 0; border-top: 1px solid var(--border);
+    font-size: 14px; color: var(--muted);
+  }
+  .footer-inner {
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  }
+  .footer-links { display: flex; gap: 24px; }
+  .footer-links a {
+    color: var(--muted); text-decoration: none;
+    transition: color 0.15s;
+  }
+  .footer-links a:hover { color: var(--text); }
+
+  /* responsive */
+  @media (max-width: 968px) {
+    .features, .stack-grid { grid-template-columns: repeat(2, 1fr); }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .nav-links a:not(.nav-cta) { display: none; }
+  }
+  @media (max-width: 560px) {
+    .hero { padding: 64px 0 48px; }
+    section { padding: 64px 0; }
+    .features, .stack-grid, .stats { grid-template-columns: 1fr; }
+    .arch { font-size: 11px; padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container nav-inner">
+    <a href="/AISSTV/" class="brand">
+      <span class="brand-mark">A</span>
+      <span>AISSTV</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#stack">Stack</a>
+      <a href="https://github.com/gadaaHu/AISSTV" class="nav-cta">GitHub →</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="container">
+    <div class="eyebrow">AI Security Camera</div>
+    <h1>Face-recognition attendance<br/>and workplace safety</h1>
+    <p class="lead">
+      A complete system for employee recognition, attendance tracking,
+      leave management, and live event monitoring — from any RTSP camera.
+    </p>
+    <div class="cta-row">
+      <a href="https://github.com/gadaaHu/AISSTV" class="btn btn-primary">
+        View on GitHub
+      </a>
+      <a href="#architecture" class="btn btn-secondary">
+        See architecture
+      </a>
+    </div>
+
+    <div class="stats">
+      <div>
+        <div class="stat-num">5</div>
+        <div class="stat-label">Subsystems</div>
+      </div>
+      <div>
+        <div class="stat-num">20+</div>
+        <div class="stat-label">API endpoints</div>
+      </div>
+      <div>
+        <div class="stat-num">&lt;2s</div>
+        <div class="stat-label">Detection latency</div>
+      </div>
+      <div>
+        <div class="stat-num">4</div>
+        <div class="stat-label">Docker services</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="container">
+    <div class="section-header">
+      <h2>Everything you need</h2>
+      <p>One system for attendance, safety, and reporting — no bolt-ons.</p>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">◉</div>
+        <h3>Face recognition</h3>
+        <p>YOLO detects people, ArcFace identifies employees. Works with any RTSP camera.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">◐</div>
+        <h3>Camera management</h3>
+        <p>Add, edit, test, and preview cameras from the browser. Live RTSP probe with resolution and latency.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">▤</div>
+        <h3>Leave management</h3>
+        <p>Request, approve, and track leaves. Balance calculation and holiday calendar included.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">☰</div>
+        <h3>Live events</h3>
+        <p>Every detection is timestamped and searchable. Filter by camera, zone, employee, or type.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">◍</div>
+        <h3>Employee registry</h3>
+        <p>Manage employees with shifts, departments, and timezone-aware scheduling.</p>
+      </div>
+      <div class="feature">
+        <div class="feature-icon">◆</div>
+        <h3>Mobile app</h3>
+        <p>Flutter app for iOS and Android. Same API, same data, same experience.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture" style="background: rgba(30, 41, 59, 0.4);">
+  <div class="container">
+    <div class="section-header">
+      <h2>Architecture</h2>
+      <p>Five layers, edge-first, one database.</p>
+    </div>
+    <pre class="arch">
+┌──────────────────────────────────────────────────────┐
+│  CAMERAS    RTSP / ONVIF / SSTV                      │
+└─────────────────────────┬────────────────────────────┘
+                          │
+┌─────────────────────────▼────────────────────────────┐
+│  EDGE NODE  Python + YOLO + ArcFace                  │
+│    Person detection → Tracking → Face recognition    │
+│    Rules engine → MQTT publish                       │
+└─────────────────────────┬────────────────────────────┘
+                          │ MQTT
+┌─────────────────────────▼────────────────────────────┐
+│  BACKEND    FastAPI + Async SQLAlchemy               │
+│    Consumer → PostgreSQL                             │
+│    REST API + JWT auth + SSE alerts                  │
+└─────────────────────────┬────────────────────────────┘
+                          │
+        ┌─────────────────┴─────────────────┐
+        ▼                                   ▼
+┌──────────────────┐              ┌──────────────────┐
+│  WEB DASHBOARD   │              │  MOBILE APP      │
+│  React + Tailwind│              │  Flutter         │
+└──────────────────┘              └──────────────────┘
+    </pre>
+  </div>
+</section>
+
+<section id="stack">
+  <div class="container">
+    <div class="section-header">
+      <h2>Technology stack</h2>
+      <p>Every choice made for reliability and clarity.</p>
+    </div>
+    <div class="stack-grid">
+      <div class="stack-group">
+        <h4>Edge / Vision</h4>
+        <ul>
+          <li>Python 3.11</li>
+          <li>Ultralytics YOLOv8</li>
+          <li>InsightFace / ArcFace</li>
+          <li>ByteTrack</li>
+          <li>OpenCV</li>
+        </ul>
+      </div>
+      <div class="stack-group">
+        <h4>Backend</h4>
+        <ul>
+          <li>FastAPI</li>
+          <li>SQLAlchemy 2.0 (async)</li>
+          <li>asyncpg</li>
+          <li>Alembic</li>
+          <li>Pydantic v2</li>
+        </ul>
+      </div>
+      <div class="stack-group">
+        <h4>Data</h4>
+        <ul>
+          <li>PostgreSQL 16</li>
+          <li>Structured indexes</li>
+          <li>JSONB metadata</li>
+          <li>Time-series ready</li>
+          <li>Migration history</li>
+        </ul>
+      </div>
+      <div class="stack-group">
+        <h4>Frontend</h4>
+        <ul>
+          <li>React 18</li>
+          <li>TypeScript</li>
+          <li>Vite</li>
+          <li>Tailwind CSS</li>
+          <li>React Router v6</li>
+        </ul>
+      </div>
+      <div class="stack-group">
+        <h4>Mobile</h4>
+        <ul>
+          <li>Flutter 3.24</li>
+          <li>Riverpod</li>
+          <li>GoRouter</li>
+          <li>Dio</li>
+          <li>Freezed</li>
+        </ul>
+      </div>
+      <div class="stack-group">
+        <h4>Deploy</h4>
+        <ul>
+          <li>Docker Compose</li>
+          <li>Mosquitto MQTT</li>
+          <li>Caddy TLS</li>
+          <li>systemd</li>
+          <li>GitHub Actions</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta-section">
+  <div class="container">
+    <h2>Ready to try it?</h2>
+    <p>Clone the repo and run it with Docker in under 5 minutes.</p>
+    <div class="cta-row">
+      <a href="https://github.com/gadaaHu/AISSTV" class="btn btn-primary">
+        Get the source →
+      </a>
+      <a href="https://github.com/gadaaHu/AISSTV#quick-start" class="btn btn-secondary">
+        Quick start guide
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container footer-inner">
+    <div>© <span id="year"></span> AISSTV · MIT License</div>
+    <div class="footer-links">
+      <a href="https://github.com/gadaaHu/AISSTV">GitHub</a>
+      <a href="https://github.com/gadaaHu/AISSTV/blob/main/RUNBOOK.md">Runbook</a>
+      <a href="https://github.com/gadaaHu/AISSTV/issues">Issues</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('year').textContent = new Date().getFullYear();
+</script>
+
+</body>
+</html>
