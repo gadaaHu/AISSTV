@@ -1,0 +1,17 @@
+mqtt:
+  host: "mosquitto"
+  port: 1883
+  topic: "attendance/camera_01/stream/faces/events"
+
+camera:
+  url: "0"  # Note: 0 only works on linux or if using RTSP. Use RTSP URL for IP cameras.
+  name: "camera_01"
+  location: "Main Entrance"
+
+model:
+  detector: "yolov8n.pt"  
+  face: "buffalo_l"       
+
+attendance:
+  confidence_threshold: 0.6
+  debounce_seconds: 60

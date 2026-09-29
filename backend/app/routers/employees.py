@@ -1,6 +1,7 @@
+import os
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, status, File, UploadFile
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,6 +59,28 @@ async def create_employee(
     await db.commit()
     await db.refresh(emp)
     return emp
+
+
+@router.post("/{code}/face", response_model=dict)
+async def upload_employee_face(
+    code: str,
+    db: SessionDep,
+    user: Annotated[User, Depends(require_role("admin"))],
+    file: UploadFile = File(...),
+):
+    emp = await db.scalar(select(Employee).where(Employee.code == code))
+    if emp is None:
+        raise NotFound("Employee not found")
+
+    os.makedirs("uploads/faces", exist_ok=True)
+    # Store with a clean filename: <code>_<original_name>
+    safe_name = f"{code}_{file.filename}".replace(" ", "_")
+    file_path = f"uploads/faces/{safe_name}"
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    return {"message": "Face photo saved. Edge nodes will pick it up on next sync.", "path": file_path}
 
 
 @router.patch("/{code}", response_model=EmployeeOut)

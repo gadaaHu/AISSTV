@@ -1,20 +1,32 @@
-log:
-  level: INFO
-  file: /var/log/attendance/edge.log
+camera:
+  id: cam-01
+  url: "0"
+  zone: main-entrance
+  fps_process: 3
 
-storage:
-  save_snapshots: true
-  dir: snapshots
+mqtt:
+  host: localhost
+  port: 1883
+  topic: attendance/acme/hq/cam-01/events
 
 face:
-  # (existing keys from Step 3)
-  cache_ttl_sec: 5.0
-  use_gpu: true
+  model: buffalo_l
+  threshold: 0.45
+  min_box: 60
   gallery: gallery.npz
 
 attendance:
-  # (existing keys from Step 4)
+  shift_start: "09:00"
+  grace_minutes: 15
+  exit_timeout_sec: 20
   timezone: Africa/Addis_Ababa
-  min_frames_for_enter: 3
-  min_confidence_for_enter: 0.45
-  unknown_alert_sec: 5
+
+display:
+  show_window: true
+  window_name: "Attendance Camera"
+  show_confidence: true
+  show_unknown_label: true
+  unknown_label: "Unknown person"
+
+detector:
+  model: yolov8n.pt

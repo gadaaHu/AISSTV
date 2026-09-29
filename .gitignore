@@ -1,43 +1,76 @@
-# secrets — NEVER commit these
+# ---- secrets (NEVER commit) ----
 .env
 *.env
-!*.env.example
+!.env.example
+.env.local
+.env.*.local
 
-# python
+# ---- Python ----
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
 .venv/
 venv/
+env/
+ENV/
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# node
+# ---- Data files (NEVER commit) ----
+*.db
+*.sqlite
+*.sqlite3
+*.npz
+queue-*.db
+gallery.npz
+watchlist.npz
+snapshots/
+edge/logs/
+edge/photos/
+
+# ---- Node ----
 node_modules/
 dist/
+dist-ssr/
 .vite/
+*.local
+npm-debug.log*
+yarn-error.log*
 
-# flutter
+# ---- Flutter ----
 .dart_tool/
+.packages
+.pub-cache/
+.pub/
 build/
+.flutter-plugins
+.flutter-plugins-dependencies
 *.g.dart
 *.freezed.dart
 
-# data (never commit)
-*.db
-*.sqlite
-*.npz
-gallery.npz
-watchlist.npz
-queue-*.db
-
-# media
-snapshots/
-evidence/
-*.mp4
-
-# os
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
 Thumbs.db
-.idea/
-.vscode/
+
+# ---- Backups ----
+backups/*.dump
+backups/*.sql
+backups/*.tar.gz
+
+# ---- Docker ----
+*.log
+
+# ---- Evidence / media ----
+evidence/
+*.mp4
+*.avi

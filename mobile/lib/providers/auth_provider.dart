@@ -1,5 +1,6 @@
 import "package:dio/dio.dart";
 import "package:flutter_riverpod/flutter_riverpod.dart";
+import "package:local_auth/local_auth.dart";
 
 import "../core/errors/app_exception.dart";
 import "../core/network/dio_client.dart";
@@ -15,8 +16,9 @@ class AuthUnknown extends AuthState {
 }
 
 class AuthUnauthenticated extends AuthState {
-  const AuthUnauthenticated({this.error});
+  const AuthUnauthenticated({this.error, this.canRetryBiometrics = false});
   final String? error;
+  final bool canRetryBiometrics;
 }
 
 class AuthAuthenticated extends AuthState {
@@ -44,11 +46,51 @@ class AuthNotifier extends Notifier<AuthState> {
       state = const AuthUnauthenticated();
       return;
     }
+    
+    try {
+      final auth = LocalAuthentication();
+      final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      
+      if (canAuth) {
+        final didAuth = await auth.authenticate(
+          localizedReason: 'Please authenticate to access Attendance App',
+        );
+        if (!didAuth) {
+          state = const AuthUnauthenticated(canRetryBiometrics: true);
+          return;
+        }
+      }
+    } catch (_) {
+      // Biometrics not supported on this platform (web, some desktops) — skip
+    }
+    
+    await _completeLogin();
+  }
+
+  Future<void> loginWithBiometrics() async {
+    final store = ref.read(secureStoreProvider);
+    if (await store.readToken() == null) return;
+    
+    try {
+      final auth = LocalAuthentication();
+      final canAuth = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+      if (canAuth) {
+        final didAuth = await auth.authenticate(
+          localizedReason: 'Please authenticate to access Attendance App',
+        );
+        if (didAuth) await _completeLogin();
+      }
+    } catch (_) {
+      // Not supported on this platform
+    }
+  }
+
+  Future<void> _completeLogin() async {
     try {
       final user = await _fetchMe();
       state = AuthAuthenticated(user);
     } catch (_) {
-      await store.clearToken();
+      await ref.read(secureStoreProvider).clearToken();
       state = const AuthUnauthenticated();
     }
   }

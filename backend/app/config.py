@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     bootstrap_admin_user: str = "admin"
     bootstrap_admin_password: SecretStr = SecretStr("admin123")
 
-    cors_origins: list = ["http://localhost:3000"]
+    cors_origins: list = ["http://localhost:3000", "http://localhost:4000"]
     evidence_dir: str = "/var/lib/attendance/evidence"
 
 

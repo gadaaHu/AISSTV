@@ -42,6 +42,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final theme = Theme.of(context);
     final auth = ref.watch(authProvider);
     final error = auth is AuthUnauthenticated ? auth.error : null;
+    final canRetryBiometrics = auth is AuthUnauthenticated ? auth.canRetryBiometrics : false;
 
     return Scaffold(
       body: Center(
@@ -91,6 +92,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         )
                       : const Text("Sign in"),
                 ),
+                if (canRetryBiometrics) ...[
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () async {
+                      setState(() => _busy = true);
+                      await ref.read(authProvider.notifier).loginWithBiometrics();
+                      if (mounted) setState(() => _busy = false);
+                    },
+                    icon: const Icon(Icons.fingerprint),
+                    label: const Text("Login with Face ID / Biometrics"),
+                  ),
+                ],
                 if (error != null) ...[
                   const SizedBox(height: 16),
                   Container(

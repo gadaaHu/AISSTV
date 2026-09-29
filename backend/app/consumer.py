@@ -169,7 +169,7 @@ _consumer_thread = None
 
 def start_consumer():
     global _consumer_thread
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     client = mqtt.Client(
         client_id=settings.mqtt_client_id,
         protocol=mqtt.MQTTv5,

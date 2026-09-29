@@ -57,7 +57,6 @@ class Publisher:
         # --- MQTT client ---
         self.client = mqtt.Client(
             client_id=self.client_id,
-            clean_session=False,               # persistent session
             protocol=mqtt.MQTTv5,
         )
         if username:

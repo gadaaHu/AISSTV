@@ -100,14 +100,19 @@ class StreamReader:
     def _open(self) -> bool:
         log.info("Opening stream %s", self.url)
         try:
-            # Prefer FFMPEG backend for RTSP; falls back to GStreamer / any
-            cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
+            # If the URL is a webcam index (e.g. "0", "1"), use default backend.
+            # CAP_FFMPEG cannot open hardware webcam devices by index.
+            url_or_index: int | str
+            if str(self.url).isdigit():
+                url_or_index = int(self.url)
+                cap = cv2.VideoCapture(url_or_index)
+            else:
+                # Prefer FFMPEG backend for RTSP streams
+                url_or_index = self.url
+                cap = cv2.VideoCapture(url_or_index, cv2.CAP_FFMPEG)
 
-            # keep only 1 frame buffered inside FFmpeg -> always fresh
+            # keep only 1 frame buffered -> always fresh
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-
-            # transport + timeout hints (FFmpeg reads these via the URL/opts)
-            # If you need finer control, see the "advanced" section below.
 
             if not cap.isOpened():
                 log.warning("Cannot open %s", self.url)

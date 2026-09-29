@@ -5,8 +5,7 @@ from sqlalchemy import select
 
 from .auth import hash_password
 from .config import settings
-from .models.user import User
-from .models.employee import Employee
+from .models import User, Employee
 
 log = logging.getLogger("bootstrap")
 
