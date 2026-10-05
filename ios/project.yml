@@ -1,0 +1,54 @@
+# XcodeGen fallback configuration.
+#
+# The checked-in `AISSTV.xcodeproj` is a complete, ready-to-open project that
+# uses Xcode 16 file-system-synchronized groups, so you normally do not need
+# this file. It exists as a safety net: if anything about the hand-written
+# project file misbehaves in your Xcode version, regenerate a fresh one with
+#
+#     brew install xcodegen
+#     cd ios && xcodegen generate
+#
+# which produces an equivalent project from the same sources.
+
+name: AISSTV
+
+options:
+  bundleIdPrefix: com.aisstv
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  objectVersion: 77
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+targets:
+  AISSTV:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: AISSTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aisstv.attendance
+        PRODUCT_NAME: AISSTV
+        # A real Info.plist is used because the app needs an
+        # NSAppTransportSecurity dictionary, which INFOPLIST_KEY_* settings
+        # cannot express.
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Supporting/AISSTV-Info.plist
+        # Point this at your backend. Do not include a trailing slash.
+        AISSTV_API_BASE_URL: http://localhost:8000
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic

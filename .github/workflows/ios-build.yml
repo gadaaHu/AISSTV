@@ -1,0 +1,79 @@
+name: iOS build
+
+# Compiles the native SwiftUI app on a GitHub-hosted macOS runner, so the iOS
+# target can be verified without owning a Mac. It also runs the static checks
+# first, which fail fast and cheaply if the Xcode project file is malformed.
+#
+# The project uses Xcode 16 file-system-synchronized groups (objectVersion 77),
+# which Xcode 15 cannot open — so the runner must be macos-15 or newer.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build for the iOS Simulator SDK (no code signing)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode 16 if one is installed
+        run: |
+          set -euo pipefail
+          candidate="$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1 || true)"
+          if [ -n "$candidate" ]; then
+            echo "Selecting $candidate"
+            sudo xcode-select -s "$candidate"
+          else
+            echo "No Xcode_16*.app found; using the runner default."
+          fi
+          xcodebuild -version
+          swift --version
+
+      - name: Static checks on the Xcode project and sources
+        run: python3 ios/tools/verify_project.py --root ios
+
+      - name: Verify the project file and scheme are readable
+        # A malformed project.pbxproj fails here with a clear message rather
+        # than deep inside the build.
+        run: xcodebuild -list -project ios/AISSTV.xcodeproj
+
+      - name: Build
+        # The Simulator SDK needs no signing identity or team, so this works on
+        # a runner with no certificates. `generic/platform=iOS Simulator` avoids
+        # depending on a particular simulator device being installed.
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project ios/AISSTV.xcodeproj \
+            -scheme AISSTV \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee xcodebuild.log
+
+      - name: Upload the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          if-no-files-found: ignore
