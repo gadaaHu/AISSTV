@@ -313,6 +313,7 @@ class RulesEngine:
             out.append({
                 "track_id": st.track_id,
                 "employee_id": st.employee_id,
+                "unknown_id": st.unknown_id,
                 "confidence": round(st.confidence, 3),
                 "age_sec": round((now - st.first_seen).total_seconds(), 1),
                 "since_last_seen_sec": round((now - st.last_seen).total_seconds(), 1),

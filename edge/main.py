@@ -83,7 +83,7 @@ class Stats:
         self.errors = 0
         self.started = time.time()
 
-    def snapshot(self, rules, pub, face_cache_size):
+    def snapshot(self, rules, pub, face_cache_size, face_engine=None):
         uptime = time.time() - self.started
         return {
             "uptime_sec": int(uptime),
@@ -93,6 +93,8 @@ class Stats:
             "face_calls": self.face_calls,
             "face_hit_rate": round(self.face_hits / max(self.face_calls, 1), 3),
             "face_cache": face_cache_size,
+            "cooldown_active": len(rules._counted_faces),
+            "unknowns_tracked": len(face_engine.unknown_gallery) if face_engine else 0,
             "events": self.events_emitted,
             "errors": self.errors,
             "tracks_active": len(rules.states),
@@ -155,6 +157,8 @@ def main():
         use_gpu=cfg.get("face", {}).get("use_gpu", True),
     )
     face.load(cfg.get("face", {}).get("gallery", "gallery.npz"))
+    unknowns_file = cfg.get("face", {}).get("unknowns", "unknowns.npz")
+    face.load_unknowns(unknowns_file)
     if face.gallery_size() == 0:
         log.warning("Gallery is empty — every face will be UNKNOWN")
     else:
@@ -315,18 +319,19 @@ def main():
                     "camera_id": cfg["camera"]["id"],
                     "zone": cfg["camera"]["zone"],
                     "employee_id": None, "confidence": 0.0, "track_id": None,
-                    "meta": stats.snapshot(rules, pub, len(face_cache)),
+                    "meta": stats.snapshot(rules, pub, len(face_cache), face),
                 })
                 last_heartbeat = time.time()
 
             # ---- 8. periodic stats log (every 60s) ----
             if time.time() - last_stats_log > 60:
-                snap = stats.snapshot(rules, pub, len(face_cache))
+                snap = stats.snapshot(rules, pub, len(face_cache), face)
                 log.info(
-                    "stats fps=%.1f det=%d face=%d hit=%.2f events=%d err=%d tracks=%d q=%d",
+                    "stats fps=%.1f det=%d face=%d hit=%.2f events=%d err=%d tracks=%d cd=%d unk=%d q=%d",
                     snap["fps_avg"], snap["detections"], snap["face_calls"],
                     snap["face_hit_rate"], snap["events"], snap["errors"],
-                    snap["tracks_active"], snap["mqtt"]["in_memory_queue"],
+                    snap["tracks_active"], snap.get("cooldown_active", 0),
+                    snap.get("unknowns_tracked", 0), snap["mqtt"]["in_memory_queue"],
                 )
                 last_stats_log = time.time()
 
@@ -354,6 +359,11 @@ def main():
             reader.stop()
         except Exception:
             pass
+        # save persistent unknown faces
+        try:
+            face.save_unknowns(unknowns_file)
+        except Exception:
+            pass
         # flush pending events
         try:
             final_events = rules.sweep()
@@ -368,7 +378,7 @@ def main():
             "camera_id": cfg["camera"]["id"],
             "zone": cfg["camera"]["zone"],
             "employee_id": None, "confidence": 0.0, "track_id": None,
-            "meta": stats.snapshot(rules, pub, len(face_cache)),
+            "meta": stats.snapshot(rules, pub, len(face_cache), face),
         })
         pub.stop(drain_timeout=10)
         log.info("Stopped.")

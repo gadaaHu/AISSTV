@@ -191,6 +191,38 @@ class FaceEngine:
         except FileNotFoundError:
             log.warning("No gallery file at %s (empty gallery)", path)
 
+    def save_unknowns(self, path: str | Path = "unknowns.npz"):
+        """Persist active unknown faces so they are recognized across process restarts."""
+        if not self.unknown_gallery:
+            return
+        try:
+            data = {uid: emb for uid, (emb, _) in self.unknown_gallery.items()}
+            ts_data = {f"_ts_{uid}": np.array([ts], dtype=np.float64) for uid, (_, ts) in self.unknown_gallery.items()}
+            data.update(ts_data)
+            np.savez(path, **data)
+        except Exception:
+            log.exception("Failed to save unknown faces to %s", path)
+
+    def load_unknowns(self, path: str | Path = "unknowns.npz"):
+        """Load persistent unknown faces within the 16-hour window."""
+        path = Path(path)
+        if not path.is_file():
+            return
+        try:
+            data = np.load(path)
+            cutoff = time.time() - self.unknown_ttl_seconds
+            loaded = 0
+            for k in data.files:
+                if not k.startswith("_ts_"):
+                    ts_arr = data.get(f"_ts_{k}")
+                    ts = float(ts_arr[0]) if ts_arr is not None else time.time()
+                    if ts >= cutoff:
+                        self.unknown_gallery[k] = (data[k], ts)
+                        loaded += 1
+            log.info("Loaded %d active unknown face(s) from %s", loaded, path)
+        except Exception:
+            log.exception("Failed to load unknown faces from %s", path)
+
     # ------------------------------------------------------------------ introspection
     def gallery_size(self) -> int:
         return len(self.gallery)
