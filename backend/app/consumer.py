@@ -64,60 +64,67 @@ async def handle_event(payload: dict) -> None:
         log.warning("invalid_event", reason=reason)
         return
 
-    async with SessionLocal() as db:
-        try:
-            exists = await db.scalar(select(Event.id).where(Event.id == payload["event_id"]))
-            if exists:
-                STATS.duplicates += 1
+    for attempt in range(2):
+        async with SessionLocal() as db:
+            try:
+                exists = await db.scalar(select(Event.id).where(Event.id == payload["event_id"]))
+                if exists:
+                    STATS.duplicates += 1
+                    return
+
+                ev = Event(
+                    id=payload["event_id"],
+                    ts=_parse_ts(payload["ts"]),
+                    local_ts=_parse_ts(payload["local_ts"]) if payload.get("local_ts") else None,
+                    camera_id=payload["camera_id"],
+                    zone=payload.get("zone"),
+                    type=payload["type"],
+                    employee_code=payload.get("employee_id"),
+                    confidence=payload.get("confidence"),
+                    track_id=payload.get("track_id"),
+                    meta=payload.get("meta") or {},
+                )
+
+                cam = await db.get(Camera, ev.camera_id)
+                if cam is None:
+                    cam = Camera(id=ev.camera_id, zone=ev.zone or "unknown", active=True)
+                    db.add(cam)
+                cam.last_seen_at = datetime.now(timezone.utc)
+
+                if ev.employee_code:
+                    emp_exists = await db.scalar(select(Employee.code).where(Employee.code == ev.employee_code))
+                    if not emp_exists:
+                        db.add(Employee(code=ev.employee_code, name=f"(auto) {ev.employee_code}", active=False))
+                        STATS.unknown_employees += 1
+
+                db.add(ev)
+                await db.flush()
+
+                if ev.type in ("ENTER", "LATE", "EXIT") and ev.employee_code:
+                    await _upsert_attendance(db, ev)
+
+                await db.commit()
+                STATS.inserted += 1
+                log.info("event_ingested", type=ev.type, employee=ev.employee_code, camera=ev.camera_id)
                 return
 
-            ev = Event(
-                id=payload["event_id"],
-                ts=_parse_ts(payload["ts"]),
-                camera_id=payload["camera_id"],
-                zone=payload.get("zone"),
-                type=payload["type"],
-                employee_code=payload.get("employee_id"),
-                confidence=payload.get("confidence"),
-                track_id=payload.get("track_id"),
-                meta=payload.get("meta") or {},
-            )
-
-            cam = await db.get(Camera, ev.camera_id)
-            if cam is None:
-                cam = Camera(id=ev.camera_id, zone=ev.zone or "unknown", active=True)
-                db.add(cam)
-            cam.last_seen_at = datetime.now(timezone.utc)
-
-            if ev.employee_code:
-                emp_exists = await db.scalar(select(Employee.code).where(Employee.code == ev.employee_code))
-                if not emp_exists:
-                    db.add(Employee(code=ev.employee_code, name=f"(auto) {ev.employee_code}", active=False))
-                    STATS.unknown_employees += 1
-
-            db.add(ev)
-            await db.flush()
-
-            if ev.type in ("ENTER", "LATE", "EXIT") and ev.employee_code:
-                await _upsert_attendance(db, ev)
-
-            await db.commit()
-            STATS.inserted += 1
-            log.info("event_ingested", type=ev.type, employee=ev.employee_code, camera=ev.camera_id)
-
-        except IntegrityError:
-            await db.rollback()
-            STATS.duplicates += 1
-        except Exception:
-            await db.rollback()
-            STATS.errors += 1
-            log.exception("handle_event_failed")
+            except IntegrityError:
+                await db.rollback()
+                if attempt == 0:
+                    await asyncio.sleep(0.1)
+                    continue
+                STATS.duplicates += 1
+            except Exception:
+                await db.rollback()
+                STATS.errors += 1
+                log.exception("handle_event_failed")
+                return
 
 
 async def _upsert_attendance(db, ev: Event) -> None:
     if not ev.employee_code:
         return
-    day = ev.ts.date()
+    day = ev.local_ts.date() if ev.local_ts else ev.ts.date()
     meta = ev.meta or {}
 
     att = await db.scalar(
@@ -175,6 +182,11 @@ def start_consumer():
         protocol=mqtt.MQTTv5,
         userdata={"loop": loop},
     )
+    if settings.mqtt_username:
+        client.username_pw_set(
+            settings.mqtt_username, 
+            settings.mqtt_password.get_secret_value() if settings.mqtt_password else None
+        )
     client.on_connect = _on_connect
     client.on_disconnect = _on_disconnect
     client.on_message = _on_message

@@ -73,7 +73,7 @@ async def get_fraud(incident_id: str, db: SessionDep, _: CurrentUser):
 @router.patch("/{incident_id}/resolve", response_model=IncidentOut)
 async def resolve_fraud(
     incident_id: str, body: ResolveIn, db: SessionDep,
-    user: Annotated[User, Depends(require_role("admin", "manager"))],
+    user: Annotated[User, Depends(require_role("admin", "manager", "authorizor"))],
 ):
     inc = await db.get(Incident, incident_id)
     if inc is None or inc.type != "FRAUD":

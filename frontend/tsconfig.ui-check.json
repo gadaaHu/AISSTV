@@ -1,0 +1,10 @@
+{
+  "//": "Narrow program for checking the shared UI layer on its own while the feature pages are being rewritten. Extends the app config and limits `include`, which still pulls in every transitively imported file.",
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/components/ui",
+    "src/hooks",
+    "src/lib",
+    "src/vite-env.d.ts"
+  ]
+}

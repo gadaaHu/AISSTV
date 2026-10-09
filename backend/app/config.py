@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,8 +37,17 @@ class Settings(BaseSettings):
     bootstrap_admin_user: str = "admin"
     bootstrap_admin_password: SecretStr = SecretStr("admin123")
 
-    cors_origins: list = ["http://localhost:3000", "http://localhost:4000"]
+    cors_origins: list = ["*"]
     evidence_dir: str = "/var/lib/attendance/evidence"
+
+    @model_validator(mode="after")
+    def _check_prod_secrets(self) -> "Settings":
+        if self.env == "prod":
+            if self.jwt_secret.get_secret_value() in ("change-me-in-prod", "dev-secret-change-me-in-production"):
+                raise ValueError("Insecure JWT secret in prod environment")
+            if self.bootstrap_admin_password.get_secret_value() == "admin123":
+                raise ValueError("Insecure admin password in prod environment")
+        return self
 
 
 @lru_cache

@@ -2,9 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="AISSTV attendance and safety console" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Attendance</title>
+    <title>AISSTV — Attendance Console</title>
+    <script>
+      // Resolve the theme before the first paint, otherwise a dark-mode user
+      // sees a white flash while React boots. Mirrors src/hooks/useTheme.ts.
+      (function () {
+        try {
+          var stored = localStorage.getItem("aisstv.theme");
+          var dark =
+            stored === "dark" ||
+            (stored !== "light" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("dark", dark);
+        } catch (_) {
+          /* private mode with storage disabled: fall back to the light theme */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

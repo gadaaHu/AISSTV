@@ -1,0 +1,10 @@
+{
+  "//": "Scoped check for the Events work: includes only those files, so it does not fail on pages another agent is still writing.",
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/pages/Events.tsx",
+    "src/components/events",
+    "src/hooks/queries/useEvents.ts",
+    "src/vite-env.d.ts"
+  ]
+}

@@ -12,7 +12,7 @@ from ..schemas import Page, UserIn, UserOut, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 SessionDep = Annotated[AsyncSession, Depends(get_db)]
-AdminUser = Annotated[User, Depends(require_role("admin"))]
+AdminUser = Annotated[User, Depends(require_role("admin", "authorizor"))]
 
 
 @router.get("", response_model=Page[UserOut])

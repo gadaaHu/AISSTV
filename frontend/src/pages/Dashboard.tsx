@@ -1,148 +1,350 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { api } from "../api/client";
-import type {
-  AttendanceRow, AttendanceSummary, Camera, Page,
-} from "../api/types";
-import { KpiCard } from "../components/KpiCard";
-import { StatusBadge } from "../components/StatusBadge";
+import { useState } from "react";
+
+import type { AttendanceRow } from "../api/types";
+import { MetricCard } from "../components/dashboard/MetricCard";
+import { PageHeader } from "../components/PageHeader";
+import {
+  Avatar,
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Icon,
+  Input,
+  Skeleton,
+  SkeletonText,
+  StatusBadge,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableMessage,
+  TableRow,
+} from "../components/ui";
+import { useAttendanceList, useAttendanceSummary } from "../hooks/queries/useAttendance";
+import { attendanceStyle } from "../lib/constants";
+import { formatIsoDay, formatTime, todayIsoDay } from "../lib/dates";
+import { EMPTY, formatDuration, formatNumber, humanise } from "../lib/format";
+
+/** How many rows the "today's attendance" table asks for. */
+const ATTENDANCE_LIMIT = 50;
+
+/** Below `md` the table is replaced by one card per employee. */
+function AttendanceCard({ row }: { row: AttendanceRow }) {
+  return (
+    <li className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+      <div className="flex items-start gap-3">
+        <Avatar name={row.employee_name} size="sm" />
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+            {row.employee_name}
+          </p>
+          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+            <span className="font-mono">{row.employee_code}</span>
+            {row.department ? ` · ${humanise(row.department)}` : ""}
+          </p>
+        </div>
+
+        <StatusBadge style={attendanceStyle(row.status)} />
+      </div>
+
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+        <div className="flex justify-between gap-2">
+          <dt className="text-slate-500 dark:text-slate-400">Check-in</dt>
+          <dd className="text-slate-700 tabular-nums dark:text-slate-300">
+            {formatTime(row.check_in)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-slate-500 dark:text-slate-400">Check-out</dt>
+          <dd className="text-slate-700 tabular-nums dark:text-slate-300">
+            {formatTime(row.check_out)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-slate-500 dark:text-slate-400">Late</dt>
+          <dd className="text-slate-700 tabular-nums dark:text-slate-300">
+            {row.minutes_late > 0 ? `${formatNumber(row.minutes_late)} min` : EMPTY}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-2">
+          <dt className="text-slate-500 dark:text-slate-400">Dwell</dt>
+          <dd className="text-slate-700 tabular-nums dark:text-slate-300">
+            {formatDuration(row.dwell_seconds)}
+          </dd>
+        </div>
+      </dl>
+    </li>
+  );
+}
 
 export function Dashboard() {
-  const [summary, setSummary] = useState<AttendanceSummary | null>(null);
-  const [rows, setRows] = useState<AttendanceRow[]>([]);
-  const [cameras, setCameras] = useState<Camera[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [day, setDay] = useState(() => todayIsoDay());
 
-  async function load() {
-    try {
-      const [s, r, c] = await Promise.all([
-        api.get<AttendanceSummary>("/attendance/summary"),
-        api.get<Page<AttendanceRow>>("/attendance?limit=10"),
-        api.get<Camera[]>("/cameras"),
-      ]);
-      setSummary(s);
-      setRows(r.items);
-      setCameras(c);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }
+  // `undefined` asks the summary for today; passing the day explicitly for every
+  // other calendar date keeps the KPI row and the table on the same day.
+  const summaryQuery = useAttendanceSummary(day);
+  const listQuery = useAttendanceList({
+    date: { kind: "day", day },
+    limit: ATTENDANCE_LIMIT,
+  });
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
-  }, []);
+  const { data: summary, isPending: summaryPending, error: summaryError } =
+    summaryQuery;
+  const { data, isPending, error } = listQuery;
+  const rows = data?.items ?? [];
+  const isToday = day === todayIsoDay();
 
-  if (loading) return <div className="text-slate-500">Loading dashboard...</div>;
-  if (error) {
-    return (
-      <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-        {error}
-      </div>
-    );
-  }
-
-  const onlineCameras = cameras.filter((c) => c.online).length;
+  const refresh = () => {
+    void summaryQuery.refetch();
+    void listQuery.refetch();
+  };
 
   return (
     <>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          {summary?.day} · {cameras.length} cameras ({onlineCameras} online)
-        </p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description={
+          summary
+            ? `${formatIsoDay(day)} · ${formatNumber(summary.total_employees)} active employees`
+            : formatIsoDay(day)
+        }
+        actions={
+          <>
+            <label
+              htmlFor="dashboard-day"
+              className="text-sm font-medium text-slate-600 dark:text-slate-300"
+            >
+              Day
+            </label>
+            <Input
+              id="dashboard-day"
+              type="date"
+              value={day}
+              // An `<input type="date">` already yields `YYYY-MM-DD`, which is
+              // exactly the wire format — never round-trip it through a Date.
+              onChange={(event) => {
+                // A native date input reports "" when the user clears it. Sending
+                // that on would ask the API for a day it cannot parse and the
+                // table would empty itself for no visible reason, so the last
+                // valid day is kept instead.
+                if (event.target.value) setDay(event.target.value);
+              }}
+              className="w-40"
+            />
+            <Button
+              variant="secondary"
+              disabled={isToday}
+              onClick={() => {
+                setDay(todayIsoDay());
+              }}
+            >
+              Today
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={refresh}
+              aria-label="Refresh dashboard data"
+            >
+              <Icon name="refresh" className="h-4 w-4" />
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
-      {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <KpiCard label="Present" value={summary.present} tone="green" />
-          <KpiCard label="Late" value={summary.late} tone="amber" />
-          <KpiCard label="Absent" value={summary.absent} tone="red" />
-          <KpiCard label="On leave" value={summary.on_leave} tone="indigo" />
-          <KpiCard label="Still in" value={summary.still_in} />
-          <KpiCard label="Total" value={summary.total_employees} />
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4 mb-8">
-        <Link to="/cameras" className="bg-white border border-slate-200 rounded-xl p-5 hover:border-blue-400 transition">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs uppercase text-slate-500 font-semibold">
-              Cameras
-            </span>
-            <span className="text-2xl">◐</span>
-          </div>
-          <div className="text-2xl font-bold">
-            {onlineCameras} <span className="text-sm text-slate-400 font-normal">/ {cameras.length} online</span>
-          </div>
-          <div className="text-xs text-blue-600 mt-2">Manage cameras →</div>
-        </Link>
-
-        <Link to="/leaves" className="bg-white border border-slate-200 rounded-xl p-5 hover:border-blue-400 transition">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs uppercase text-slate-500 font-semibold">
-              Leaves
-            </span>
-            <span className="text-2xl">▤</span>
-          </div>
-          <div className="text-2xl font-bold">
-            {summary?.on_leave ?? 0} <span className="text-sm text-slate-400 font-normal">today</span>
-          </div>
-          <div className="text-xs text-blue-600 mt-2">Manage leaves →</div>
-        </Link>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-          <h2 className="font-semibold">Recent attendance</h2>
-          <Link to="/events" className="text-xs text-blue-600 hover:underline">
-            View all events →
-          </Link>
-        </div>
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
-            <tr>
-              <th className="text-left px-4 py-2.5">Employee</th>
-              <th className="text-left px-4 py-2.5">Department</th>
-              <th className="text-left px-4 py-2.5">Check-in</th>
-              <th className="text-left px-4 py-2.5">Check-out</th>
-              <th className="text-left px-4 py-2.5">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.employee_code + r.day} className="border-t border-slate-100">
-                <td className="px-4 py-2.5">
-                  <div className="font-semibold">{r.employee_name}</div>
-                  <div className="text-xs text-slate-500">{r.employee_code}</div>
-                </td>
-                <td className="px-4 py-2.5 text-slate-600">{r.department ?? "—"}</td>
-                <td className="px-4 py-2.5">
-                  {r.check_in ? new Date(r.check_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
-                </td>
-                <td className="px-4 py-2.5">
-                  {r.check_out ? new Date(r.check_out).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
-                </td>
-                <td className="px-4 py-2.5">
-                  <StatusBadge status={r.status} />
-                </td>
-              </tr>
+      <section aria-label="Attendance summary" className="mb-6">
+        {summaryPending ? (
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+            {Array.from({ length: 7 }, (_, index) => (
+              <Card key={index}>
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="mt-3 h-6 w-14" />
+              </Card>
             ))}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="text-center py-8 text-slate-400">
-                  No attendance records yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        ) : summaryError ? (
+          <ErrorState
+            error={summaryError}
+            title="Could not load the summary"
+            onRetry={() => void summaryQuery.refetch()}
+          />
+        ) : summary ? (
+          <>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+              <MetricCard
+                label="Total employees"
+                value={summary.total_employees}
+                icon="employees"
+                tone="brand"
+                hint="Active headcount"
+              />
+              <MetricCard
+                label="Present"
+                value={summary.present}
+                icon="check"
+                tone="success"
+              />
+              <MetricCard
+                label="Late"
+                value={summary.late}
+                icon="clock"
+                tone="warning"
+              />
+              <MetricCard
+                label="Absent"
+                value={summary.absent}
+                icon="alert"
+                tone="danger"
+              />
+              <MetricCard
+                label="On leave"
+                value={summary.on_leave}
+                icon="leaves"
+                tone="info"
+              />
+              <MetricCard
+                label="Checked out"
+                value={summary.checked_out}
+                icon="logout"
+                tone="neutral"
+              />
+              <MetricCard
+                label="Still in"
+                value={summary.still_in}
+                icon="activity"
+                tone="info"
+              />
+            </div>
+
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              The server derives <span className="font-medium">absent</span> from
+              <span className="font-medium"> today&rsquo;s</span> active headcount,
+              so for a historical day it is shown for completeness but is not
+              authoritative.
+            </p>
+          </>
+        ) : null}
+      </section>
+
+      <Card
+        title="Attendance"
+        description={`${formatIsoDay(day)} · up to ${formatNumber(ATTENDANCE_LIMIT)} records`}
+        padded={false}
+      >
+        {isPending ? (
+          <div className="flex flex-col gap-3 p-4">
+            <SkeletonText lines={5} />
+          </div>
+        ) : error ? (
+          <div className="p-4">
+            <ErrorState
+              error={error}
+              title="Could not load attendance"
+              onRetry={() => void listQuery.refetch()}
+            />
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="p-4">
+            <EmptyState
+              icon="inbox"
+              title="No attendance recorded"
+              description={`Nothing was recorded for ${formatIsoDay(day)}. Try another day, or check that the cameras are running.`}
+            />
+          </div>
+        ) : (
+          <>
+            <div className="hidden md:block">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableHeaderCell>Employee</TableHeaderCell>
+                    <TableHeaderCell>Status</TableHeaderCell>
+                    <TableHeaderCell>Check-in</TableHeaderCell>
+                    <TableHeaderCell className="hidden md:table-cell">
+                      Check-out
+                    </TableHeaderCell>
+                    <TableHeaderCell align="right" className="hidden md:table-cell">
+                      Late
+                    </TableHeaderCell>
+                    <TableHeaderCell align="right" className="hidden md:table-cell">
+                      Dwell
+                    </TableHeaderCell>
+                  </TableRow>
+                </TableHead>
+
+                <TableBody>
+                  {rows.length === 0 ? (
+                    <TableMessage colSpan={6}>No records for this day.</TableMessage>
+                  ) : (
+                    rows.map((row) => (
+                      <TableRow key={`${row.employee_code}-${row.day}`}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar name={row.employee_name} size="sm" />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
+                                {row.employee_name}
+                              </p>
+                              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                                <span className="font-mono">
+                                  {row.employee_code}
+                                </span>
+                                {row.department
+                                  ? ` · ${humanise(row.department)}`
+                                  : ""}
+                              </p>
+                            </div>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <StatusBadge style={attendanceStyle(row.status)} />
+                        </TableCell>
+
+                        <TableCell className="tabular-nums">
+                          {formatTime(row.check_in)}
+                        </TableCell>
+
+                        <TableCell className="hidden tabular-nums md:table-cell">
+                          {formatTime(row.check_out)}
+                        </TableCell>
+
+                        <TableCell
+                          align="right"
+                          className="hidden tabular-nums md:table-cell"
+                        >
+                          {row.minutes_late > 0
+                            ? `${formatNumber(row.minutes_late)} min`
+                            : EMPTY}
+                        </TableCell>
+
+                        <TableCell
+                          align="right"
+                          className="hidden tabular-nums md:table-cell"
+                        >
+                          {formatDuration(row.dwell_seconds)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <ul className="flex flex-col gap-2 p-3 md:hidden">
+              {rows.map((row) => (
+                <AttendanceCard
+                  key={`${row.employee_code}-${row.day}`}
+                  row={row}
+                />
+              ))}
+            </ul>
+          </>
+        )}
+      </Card>
     </>
   );
 }

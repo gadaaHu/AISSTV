@@ -1,0 +1,11 @@
+{
+  "//": "Scoped check for the Login and Dashboard work: includes only those files, so it does not fail on pages another agent is still writing.",
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/pages/Login.tsx",
+    "src/pages/Dashboard.tsx",
+    "src/components/dashboard",
+    "src/hooks/queries/useAttendance.ts",
+    "src/vite-env.d.ts"
+  ]
+}

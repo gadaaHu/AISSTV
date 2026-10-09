@@ -238,7 +238,7 @@ class Publisher:
             # wait up to 5s for PUBACK; if no ack, re-queue and try later
             try:
                 info.wait_for_publish(timeout=5)
-                if info.rc == mqtt.MQTT_ERR_SUCCESS:
+                if info.is_published():
                     self._db_delete(event_id)
                     self.published += 1
                     log.debug("PUB %s", event_id)

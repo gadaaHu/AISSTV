@@ -19,10 +19,9 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: attendance-mosquitto
-    ports:
-      - "1883:1883"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto.passwd:/mosquitto/config/mosquitto.passwd
       - mosquitto_data:/mosquitto/data
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 1883 || exit 1"]
@@ -41,11 +40,13 @@ services:
       MQTT_PORT: "1883"
       MQTT_TOPIC: attendance/+/+/+/events
       MQTT_CLIENT_ID: backend-consumer
+      MQTT_USERNAME: backend
+      MQTT_PASSWORD: backend-secret
       JWT_SECRET: dev-secret-change-me-in-production
       JWT_EXPIRE_MINUTES: "480"
       BOOTSTRAP_ADMIN_USER: admin
       BOOTSTRAP_ADMIN_PASSWORD: admin123
-      CORS_ORIGINS: '["http://localhost:3000","http://localhost:4000"]'
+      CORS_ORIGINS: '["*"]'
     ports:
       - "8000:8000"
     depends_on:
@@ -67,20 +68,11 @@ services:
     build: ./frontend
     container_name: attendance-frontend
     ports:
-      - "3000:80"
+      # The image serves from the unprivileged nginx base, which listens on 8080
+      # because it runs without root.
+      - "3000:8080"
     depends_on:
       - backend
-
-  edge:
-    build: ./edge
-    container_name: attendance-edge
-    depends_on:
-      mosquitto:
-        condition: service_healthy
-    # Warning: Mapping /dev/video0 works on Linux, but not directly on Windows Docker Desktop.
-    # If using Windows, change the config.docker.yaml to use an RTSP stream instead of '0'.
-    # devices:
-    #   - /dev/video0:/dev/video0
 
 volumes:
   pgdata:

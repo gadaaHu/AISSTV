@@ -1,0 +1,22 @@
+# Keep the build context small and — more importantly — keep the host's
+# node_modules out of the image. Without this file, `COPY . .` overwrites the
+# modules installed inside the container with the host's platform-specific ones.
+node_modules
+dist
+coverage
+.npm-cache
+
+# Version control and editor cruft
+.git
+.gitignore
+.vscode
+.idea
+*.log
+.DS_Store
+
+# Secrets: nothing here is needed at build time.
+.env
+.env.*
+
+# Docs
+README.md

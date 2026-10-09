@@ -1,0 +1,14 @@
+{
+  "//": "Scoped check for the framework layer (api, lib, hooks, auth). Excludes App/main/Layout because they reference feature pages and the UI kit, which are written separately.",
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/api",
+    "src/lib",
+    "src/hooks",
+    "src/auth",
+    "src/components/ErrorBoundary.tsx",
+    "src/components/PageHeader.tsx",
+    "src/test",
+    "src/vite-env.d.ts"
+  ]
+}

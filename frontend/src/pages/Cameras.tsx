@@ -1,189 +1,547 @@
-import { useEffect, useState } from "react";
-import { api } from "../api/client";
+import { Fragment, useState } from "react";
+import type { ReactNode } from "react";
+
+import { ApiError } from "../api/errors";
 import type { Camera, CameraTestResult } from "../api/types";
-import { useAuth } from "../auth/AuthContext";
-import { StatusBadge } from "../components/StatusBadge";
-import { CameraModal } from "../components/CameraModal";
-import { CameraPreview } from "../components/CameraPreview";
+import { useAuth } from "../auth/useAuth";
+import { CameraFormDialog } from "../components/cameras/CameraFormDialog";
+import { CameraPreviewDialog } from "../components/cameras/CameraPreviewDialog";
+import { PageHeader } from "../components/PageHeader";
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  ErrorState,
+  Icon,
+  IconButton,
+  Skeleton,
+  StatusBadge,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeaderCell,
+  TableRow,
+  useToast,
+} from "../components/ui";
+import {
+  useCameras,
+  useDeleteCameraMutation,
+  useTestCameraMutation,
+} from "../hooks/queries/useCameras";
+import { cameraStyle, isAdmin } from "../lib/constants";
+import { formatRelative } from "../lib/dates";
+import {
+  EMPTY,
+  formatText,
+  hasUrlCredentials,
+  redactUrlCredentials,
+} from "../lib/format";
+import { errorMessage } from "../lib/utils";
+
+/**
+ * The camera fleet.
+ *
+ * Reading the list is open to every signed-in user — the backend restricts
+ * mutations, not reads — so the page gates only the controls, and the server
+ * re-checks every write independently.
+ *
+ * **Stream URLs are rendered redacted.** `GET /cameras` hands the raw URL, which
+ * may embed `user:password@`, to every authenticated user, so the list shows
+ * `redactUrlCredentials(camera.url)` and flags the credentials instead of
+ * printing them. The edit dialog is the single deliberate exception, where an
+ * administrator has to see the value in order to change it.
+ */
+
+/** `4 fps` / `500 ms` — `null` and `undefined` both render as the em-dash. */
+function metric(value: number | null | undefined, unit: string): string {
+  if (value === null || value === undefined) return EMPTY;
+  return `${value} ${unit}`;
+}
+
+function resolution(width: number | null, height: number | null): string | null {
+  if (width === null || height === null) return null;
+  return `${width}×${height}`;
+}
+
+/**
+ * The inline result of a probe.
+ *
+ * `POST /cameras/{id}/test` answers HTTP 200 even when the probe fails, so
+ * `result.ok` — never the status code — decides whether this reads as a success.
+ */
+function ProbeResult({ result }: { result: CameraTestResult }) {
+  const box = result.ok
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200"
+    : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200";
+
+  const size = resolution(result.width, result.height);
+
+  return (
+    <div
+      role="status"
+      className={`flex flex-col gap-1 rounded-lg border px-3 py-2 text-xs ${box}`}
+    >
+      <p className="flex items-start gap-1.5 font-medium">
+        <Icon
+          name={result.ok ? "check" : "alert"}
+          className="mt-0.5 h-3.5 w-3.5 shrink-0"
+        />
+        <span className="min-w-0 break-words">{result.message}</span>
+      </p>
+
+      <dl className="flex flex-wrap gap-x-4 gap-y-0.5 pl-5 opacity-90">
+        {size ? (
+          <div className="flex gap-1">
+            <dt>Resolution</dt>
+            <dd className="font-medium">{size}</dd>
+          </div>
+        ) : null}
+        {result.fps === null ? null : (
+          <div className="flex gap-1">
+            <dt>FPS</dt>
+            <dd className="font-medium">{metric(result.fps, "fps")}</dd>
+          </div>
+        )}
+        {result.codec === null ? null : (
+          <div className="flex gap-1">
+            <dt>Codec</dt>
+            <dd className="font-medium">{result.codec}</dd>
+          </div>
+        )}
+        {result.latency_ms === null ? null : (
+          <div className="flex gap-1">
+            <dt>Latency</dt>
+            <dd className="font-medium">{metric(result.latency_ms, "ms")}</dd>
+          </div>
+        )}
+      </dl>
+
+      {result.ok ? null : (
+        <p className="pl-5 opacity-80">
+          The probe runs on the server with ffprobe and can take about 10 seconds.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A labelled value inside a stacked card, using the house `<dl>` pattern. */
+function CardField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-[11px] tracking-wide text-slate-400 uppercase dark:text-slate-500">
+        {label}
+      </dt>
+      <dd className="min-w-0 text-slate-700 dark:text-slate-300">{children}</dd>
+    </div>
+  );
+}
+
+/** The per-row controls. Icon-only buttons carry a label, so they announce. */
+function RowActions({
+  camera,
+  testing,
+  onTest,
+  onPreview,
+  onEdit,
+  onDelete,
+}: {
+  camera: Camera;
+  testing: boolean;
+  onTest: () => void;
+  onPreview: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const name = camera.name.trim() === "" ? camera.id : camera.name;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <Button size="sm" variant="secondary" loading={testing} onClick={onTest}>
+        {testing ? "Testing…" : "Test"}
+      </Button>
+      <IconButton
+        icon="image"
+        label={`Preview ${name}`}
+        size="sm"
+        onClick={onPreview}
+      />
+      <IconButton icon="pencil" label={`Edit ${name}`} size="sm" onClick={onEdit} />
+      <IconButton
+        icon="trash"
+        label={`Delete ${name}`}
+        size="sm"
+        className="text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950"
+        onClick={onDelete}
+      />
+    </div>
+  );
+}
 
 export function Cameras() {
   const { user } = useAuth();
-  const canEdit = user?.role === "admin";
+  const toast = useToast();
+  const admin = isAdmin(user?.role);
 
-  const [items, setItems] = useState<Camera[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const [enabledOnly, setEnabledOnly] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Camera | null>(null);
-  const [showNew, setShowNew] = useState(false);
-  const [preview, setPreview] = useState<Camera | null>(null);
-  const [testing, setTesting] = useState<string | null>(null);
-  const [testResult, setTestResult] = useState<Record<string, CameraTestResult>>({});
+  const [previewing, setPreviewing] = useState<Camera | null>(null);
+  const [deleting, setDeleting] = useState<Camera | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, CameraTestResult>>({});
+  const [testingId, setTestingId] = useState<string | null>(null);
 
-  async function load() {
+  const { data, isPending, isError, error, refetch } = useCameras(enabledOnly);
+  const testMutation = useTestCameraMutation();
+  const deleteMutation = useDeleteCameraMutation();
+
+  const cameras = data ?? [];
+
+  const openCreate = (): void => {
+    setEditing(null);
+    setFormOpen(true);
+  };
+
+  const openEdit = (camera: Camera): void => {
+    setEditing(camera);
+    setFormOpen(true);
+  };
+
+  const closeForm = (): void => {
+    setFormOpen(false);
+    setEditing(null);
+  };
+
+  const runTest = (camera: Camera): void => {
+    setTestingId(camera.id);
+    testMutation.mutate(camera.id, {
+      onSuccess: (result) => {
+        setTestResults((current) => ({ ...current, [camera.id]: result }));
+      },
+      onError: (probeError) => {
+        toast.error("Could not run the test", errorMessage(probeError));
+      },
+      onSettled: () => {
+        setTestingId(null);
+      },
+    });
+  };
+
+  const confirmDelete = async (): Promise<void> => {
+    const camera = deleting;
+    if (!camera) return;
+
     try {
-      const data = await api.get<Camera[]>("/cameras");
-      setItems(data);
-      setErr(null);
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Load failed");
+      await deleteMutation.mutateAsync(camera.id);
+      toast.success(`Camera ${camera.id} deleted`);
+    } catch (deleteError) {
+      // `DELETE /cameras/{id}` is not idempotent: a repeat call for the same
+      // camera answers 404. That means someone else already removed it, which is
+      // the outcome the operator asked for, so it is reported as information —
+      // the `onSettled` invalidation in the hook is the whole fix.
+      if (deleteError instanceof ApiError && deleteError.isGone) {
+        toast.info(`Camera ${camera.id} was already deleted`);
+      } else {
+        toast.error("Could not delete the camera", errorMessage(deleteError));
+      }
     } finally {
-      setLoading(false);
+      setDeleting(null);
     }
-  }
+  };
 
-  useEffect(() => {
-    load();
-    const id = setInterval(load, 15000);
-    return () => clearInterval(id);
-  }, []);
+  const renderProbe = (camera: Camera): ReactNode => {
+    const result = testResults[camera.id];
+    return result ? <ProbeResult result={result} /> : null;
+  };
 
-  async function testCamera(cam: Camera) {
-    setTesting(cam.id);
-    try {
-      const r = await api.post<CameraTestResult>("/cameras/" + cam.id + "/test");
-      setTestResult((p) => ({ ...p, [cam.id]: r }));
-    } catch (e) {
-      setTestResult((p) => ({
-        ...p,
-        [cam.id]: { ok: false, message: e instanceof Error ? e.message : "Test failed", width: null, height: null, fps: null, codec: null, latency_ms: null },
-      }));
-    } finally {
-      setTesting(null);
-    }
-  }
-
-  async function toggleEnabled(cam: Camera) {
-    try {
-      await api.patch("/cameras/" + cam.id, { enabled: !cam.enabled });
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Update failed");
-    }
-  }
-
-  async function removeCamera(cam: Camera) {
-    if (!confirm("Remove camera " + (cam.name || cam.id) + "?")) return;
-    try {
-      await api.del("/cameras/" + cam.id);
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Delete failed");
-    }
-  }
+  const emptyState = (
+    <EmptyState
+      icon="camera"
+      title={enabledOnly ? "No enabled cameras" : "No cameras yet"}
+      description={
+        enabledOnly
+          ? "Every camera in the fleet is switched off. Turn off “Enabled only” to see them all."
+          : "A camera is one RTSP stream plus the zone it watches. Add the first one to start collecting attendance."
+      }
+      action={
+        admin ? (
+          <Button size="sm" onClick={openCreate}>
+            <Icon name="plus" className="h-4 w-4" />
+            Add camera
+          </Button>
+        ) : (
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            An administrator can add the first camera.
+          </p>
+        )
+      }
+    />
+  );
 
   return (
     <>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Cameras</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            {items.length} configured · {items.filter((c) => c.online).length} online
-          </p>
-        </div>
-        {canEdit && (
-          <button
-            onClick={() => setShowNew(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700"
+      <PageHeader
+        title="Cameras"
+        description="The RTSP streams the edge nodes run detection on. Status refreshes automatically."
+        actions={
+          // Hiding this is a convenience, not a security boundary: `POST /cameras`
+          // requires the admin role server-side and re-checks it on every call.
+          admin ? (
+            <Button onClick={openCreate}>
+              <Icon name="plus" className="h-4 w-4" />
+              Add camera
+            </Button>
+          ) : null
+        }
+      />
+
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={isPending}
+            onClick={() => {
+              void refetch();
+            }}
           >
-            + Add camera
-          </button>
-        )}
+            <Icon name="refresh" className="h-4 w-4" />
+            Refresh
+          </Button>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {cameras.length} camera{cameras.length === 1 ? "" : "s"}
+          </span>
+        </div>
+
+        <div className="w-full max-w-xs">
+          <Switch
+            checked={enabledOnly}
+            onChange={setEnabledOnly}
+            label="Enabled only"
+            description="Hide cameras that are switched off."
+          />
+        </div>
       </div>
 
-      {err && (
-        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4">{err}</div>
-      )}
-
-      {loading ? (
-        <div className="text-slate-500">Loading cameras...</div>
-      ) : items.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
-          <div className="text-5xl mb-4">◐</div>
-          <div className="font-semibold">No cameras configured</div>
-          <div className="text-sm text-slate-500 mt-1 mb-4">Add your first camera to start receiving events.</div>
-          {canEdit && (
-            <button onClick={() => setShowNew(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
-              + Add camera
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {items.map((cam) => {
-            const tr = testResult[cam.id];
-            return (
-              <div key={cam.id} className="bg-white border border-slate-200 rounded-xl p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={"w-2.5 h-2.5 rounded-full " + (cam.online ? "bg-green-500" : "bg-slate-300")} />
-                      <span className="font-bold">{cam.name || cam.id}</span>
-                      <span className="text-xs text-slate-400 font-mono">{cam.id}</span>
-                      {!cam.enabled && <span className="text-xs bg-slate-100 px-2 py-0.5 rounded">disabled</span>}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">{cam.zone} · {cam.site ?? "no site"}</div>
-                    <div className="text-xs text-slate-500 font-mono mt-1 truncate">{cam.url}</div>
-                    {cam.tags.length > 0 && (
-                      <div className="flex gap-2 mt-2 flex-wrap">
-                        {cam.tags.map((t) => (
-                          <span key={t} className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{t}</span>
-                        ))}
-                      </div>
-                    )}
-                    {tr && (
-                      <div className={"mt-3 text-xs px-3 py-2 rounded-lg " + (tr.ok ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800")}>
-                        {tr.ok
-                          ? "✓ " + tr.message + " · " + tr.width + "×" + tr.height + " · " + tr.fps + "fps · " + tr.codec + " · " + tr.latency_ms + "ms"
-                          : "✗ " + tr.message}
-                      </div>
-                    )}
-                    {cam.last_seen_at && (
-                      <div className="text-xs text-slate-400 mt-2">
-                        Last seen {new Date(cam.last_seen_at).toLocaleString()}
-                        {cam.last_error && " · error: " + cam.last_error}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col gap-2 items-end">
-                    <StatusBadge status={cam.online ? "present" : "absent"} />
-                    <div className="flex gap-1.5 flex-wrap justify-end">
-                      <button onClick={() => setPreview(cam)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-lg hover:bg-slate-50">
-                        Preview
-                      </button>
-                      <button onClick={() => testCamera(cam)} disabled={testing === cam.id} className="text-xs px-2.5 py-1 border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50">
-                        {testing === cam.id ? "Testing..." : "Test"}
-                      </button>
-                      {canEdit && (
-                        <>
-                          <button onClick={() => toggleEnabled(cam)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-lg hover:bg-slate-50">
-                            {cam.enabled ? "Disable" : "Enable"}
-                          </button>
-                          <button onClick={() => setEditing(cam)} className="text-xs px-2.5 py-1 border border-slate-300 rounded-lg hover:bg-slate-50">
-                            Edit
-                          </button>
-                          <button onClick={() => removeCamera(cam)} className="text-xs px-2.5 py-1 border border-red-200 text-red-600 rounded-lg hover:bg-red-50">
-                            Remove
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {(showNew || editing) && (
-        <CameraModal
-          camera={editing}
-          onClose={() => { setShowNew(false); setEditing(null); }}
-          onSaved={async () => { setShowNew(false); setEditing(null); await load(); }}
+      {isPending ? (
+        <Card>
+          <div className="flex flex-col gap-3">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-5/6" />
+          </div>
+        </Card>
+      ) : isError ? (
+        <ErrorState
+          error={error}
+          title="Could not load the cameras"
+          onRetry={() => void refetch()}
         />
+      ) : cameras.length === 0 ? (
+        emptyState
+      ) : (
+        <>
+          {/* `md` and up: the dense table. */}
+          <Card padded={false} className="hidden overflow-hidden md:block">
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableHeaderCell>Camera</TableHeaderCell>
+                  <TableHeaderCell>Scope</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Last state</TableHeaderCell>
+                  <TableHeaderCell align="right">Actions</TableHeaderCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {cameras.map((camera) => {
+                  const name = camera.name.trim() === "" ? camera.id : camera.name;
+                  const credentials = hasUrlCredentials(camera.url);
+
+                  return (
+                    <Fragment key={camera.id}>
+                      <TableRow>
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium text-slate-900 dark:text-slate-100">
+                              {name}
+                            </span>
+                            <span className="font-mono text-xs text-slate-500 dark:text-slate-400">
+                              {camera.id}
+                            </span>
+                            {credentials ? (
+                              <Badge tone="warning" icon="alert" className="mt-0.5">
+                                URL embeds credentials
+                              </Badge>
+                            ) : null}
+                            <span className="font-mono text-[11px] break-all text-slate-400 dark:text-slate-500">
+                              {redactUrlCredentials(camera.url)}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex flex-col gap-0.5">
+                            <span>{formatText(camera.zone)}</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
+                              {formatText(camera.site)}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex flex-col items-start gap-1">
+                            <StatusBadge style={cameraStyle(camera.online)} />
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
+                              {formatRelative(camera.last_seen_at)}
+                            </span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <span>{formatText(camera.last_state)}</span>
+                            {camera.last_error ? (
+                              <span className="text-xs text-rose-600 dark:text-rose-400">
+                                {camera.last_error}
+                              </span>
+                            ) : null}
+                          </div>
+                        </TableCell>
+
+                        <TableCell align="right">
+                          <div className="flex justify-end">
+                            <RowActions
+                              camera={camera}
+                              testing={testingId === camera.id}
+                              onTest={() => runTest(camera)}
+                              onPreview={() => setPreviewing(camera)}
+                              onEdit={() => openEdit(camera)}
+                              onDelete={() => setDeleting(camera)}
+                            />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+
+                      {testResults[camera.id] ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={5}
+                            className="bg-slate-50 dark:bg-slate-900/40"
+                          >
+                            {renderProbe(camera)}
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+
+          {/* Below `md`: one card per camera, so nothing is squeezed off-screen. */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {cameras.map((camera) => {
+              const name = camera.name.trim() === "" ? camera.id : camera.name;
+              const credentials = hasUrlCredentials(camera.url);
+
+              return (
+                <Card
+                  key={camera.id}
+                  title={name}
+                  description={<span className="font-mono text-xs">{camera.id}</span>}
+                  actions={<StatusBadge style={cameraStyle(camera.online)} />}
+                >
+                  <div className="flex flex-col gap-3">
+                    {credentials ? (
+                      <Badge tone="warning" icon="alert">
+                        Stream URL embeds credentials
+                      </Badge>
+                    ) : null}
+
+                    <dl className="grid grid-cols-2 gap-3 text-sm">
+                      <CardField label="Zone">
+                        {formatText(camera.zone)}
+                        {camera.site ? (
+                          <span className="block text-xs text-slate-500 dark:text-slate-400">
+                            {camera.site}
+                          </span>
+                        ) : null}
+                      </CardField>
+                      <CardField label="Last seen">
+                        {formatRelative(camera.last_seen_at)}
+                      </CardField>
+                      <CardField label="Last state">
+                        {formatText(camera.last_state)}
+                      </CardField>
+                      <CardField label="URL">
+                        <span className="font-mono text-[11px] break-all">
+                          {redactUrlCredentials(camera.url)}
+                        </span>
+                      </CardField>
+                    </dl>
+
+                    {camera.last_error ? (
+                      <p className="flex items-start gap-1.5 text-xs text-rose-600 dark:text-rose-400">
+                        <Icon name="alert" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0 break-words">{camera.last_error}</span>
+                      </p>
+                    ) : null}
+
+                    <RowActions
+                      camera={camera}
+                      testing={testingId === camera.id}
+                      onTest={() => runTest(camera)}
+                      onPreview={() => setPreviewing(camera)}
+                      onEdit={() => openEdit(camera)}
+                      onDelete={() => setDeleting(camera)}
+                    />
+
+                    {renderProbe(camera)}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      {preview && <CameraPreview camera={preview} onClose={() => setPreview(null)} />}
+      <CameraFormDialog open={formOpen} camera={editing} onClose={closeForm} />
+
+      {previewing ? (
+        <CameraPreviewDialog
+          open
+          camera={previewing}
+          onClose={() => setPreviewing(null)}
+        />
+      ) : null}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete this camera?"
+        description={
+          deleting
+            ? `“${deleting.name.trim() === "" ? deleting.id : deleting.name}” will be deactivated and its stream stopped.`
+            : undefined
+        }
+        confirmLabel="Delete camera"
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          void confirmDelete();
+        }}
+        onClose={() => setDeleting(null)}
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          The camera row is kept for the events it already recorded, so its history
+          and attendance evidence stay intact. Deleting is not reversible from this
+          screen.
+        </p>
+      </ConfirmDialog>
     </>
   );
 }

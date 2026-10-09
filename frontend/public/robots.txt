@@ -1,0 +1,4 @@
+# This is an authenticated internal admin console. There is nothing here for a
+# crawler to index, and every route except /login requires a session.
+User-agent: *
+Disallow: /

@@ -178,7 +178,7 @@ async def get_camera(camera_id: str, db: SessionDep, _: CurrentUser):
 
 @router.post("", response_model=CameraOut, status_code=status.HTTP_201_CREATED)
 async def create_camera(body: CameraIn, db: SessionDep,
-                        user: Annotated[User, Depends(require_role("admin"))]):
+                        user: Annotated[User, Depends(require_role("admin", "authorizor"))]):
     exists = await db.get(Camera, body.id)
     if exists:
         raise Conflict(f"Camera id {body.id!r} already exists")
@@ -194,7 +194,7 @@ async def create_camera(body: CameraIn, db: SessionDep,
 
 @router.patch("/{camera_id}", response_model=CameraOut)
 async def update_camera(camera_id: str, body: CameraUpdate, db: SessionDep,
-                        user: Annotated[User, Depends(require_role("admin"))]):
+                        user: Annotated[User, Depends(require_role("admin", "authorizor"))]):
     cam = await db.get(Camera, camera_id)
     if cam is None or not cam.active:
         raise NotFound("Camera not found")
@@ -210,7 +210,7 @@ async def update_camera(camera_id: str, body: CameraUpdate, db: SessionDep,
 
 @router.delete("/{camera_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_camera(camera_id: str, db: SessionDep,
-                            user: Annotated[User, Depends(require_role("admin"))]):
+                            user: Annotated[User, Depends(require_role("admin", "authorizor"))]):
     cam = await db.get(Camera, camera_id)
     if cam is None:
         raise NotFound("Camera not found")

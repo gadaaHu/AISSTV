@@ -42,6 +42,16 @@ dist-ssr/
 *.local
 npm-debug.log*
 yarn-error.log*
+# Emitted by `tsc -b` (i.e. `npm run build`) next to tsconfig.json.
+*.tsbuildinfo
+# Local caches
+.npm-cache/
+
+# ---- Stray editors/dup files ----
+*.bak
+*.save
+*.orig
+*.rej
 
 # ---- Flutter ----
 .dart_tool/

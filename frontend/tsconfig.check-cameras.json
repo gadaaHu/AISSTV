@@ -1,0 +1,10 @@
+{
+  "//": "Scoped check for the Cameras work: includes only those files, so it does not fail on pages another agent is still writing.",
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/pages/Cameras.tsx",
+    "src/components/cameras",
+    "src/hooks/queries/useCameras.ts",
+    "src/vite-env.d.ts"
+  ]
+}

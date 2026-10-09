@@ -60,27 +60,42 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 app.add_middleware(RequestContextMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+cors_kwargs = {
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if "*" in settings.cors_origins:
+    cors_kwargs["allow_origin_regex"] = ".*"
+else:
+    cors_kwargs["allow_origins"] = settings.cors_origins
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 install_exception_handlers(app)
 
-# Serve uploaded face photos at /uploads/faces/<filename>
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+from fastapi.responses import FileResponse
+from fastapi import Response, Depends
+from .auth import current_user
+from .models import User
+
+@app.get("/uploads/faces/{filename}", tags=["uploads"])
+async def get_face_photo(filename: str, _: User = Depends(current_user)):
+    file_path = os.path.join("uploads", "faces", filename)
+    if not os.path.isfile(file_path) or ".." in filename or "/" in filename or "\\" in filename:
+        from .exceptions import NotFound
+        raise NotFound("Photo not found")
+    return FileResponse(file_path)
 
 
 @app.get("/health", tags=["ops"])
-async def health():
+async def health(response: Response):
     db_ok = True
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
     except Exception:
         db_ok = False
+        response.status_code = 503
     return {"status": "ok" if db_ok else "degraded", "env": settings.env, "db": db_ok}
 
 

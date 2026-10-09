@@ -1,0 +1,10 @@
+{
+  "//": "Scoped check for the Leaves work: includes only those files, so it does not fail on pages another agent is still writing.",
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/pages/Leaves.tsx",
+    "src/components/leaves",
+    "src/hooks/queries/useLeaves.ts",
+    "src/vite-env.d.ts"
+  ]
+}

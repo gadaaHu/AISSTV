@@ -49,7 +49,7 @@ async def get_employee(code: str, db: SessionDep, _: CurrentUser):
 @router.post("", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
 async def create_employee(
     body: EmployeeIn, db: SessionDep,
-    user: Annotated[User, Depends(require_role("admin"))],
+    user: Annotated[User, Depends(require_role("admin", "authorizor"))],
 ):
     exists = await db.scalar(select(Employee.code).where(Employee.code == body.code))
     if exists:
@@ -65,7 +65,7 @@ async def create_employee(
 async def upload_employee_face(
     code: str,
     db: SessionDep,
-    user: Annotated[User, Depends(require_role("admin"))],
+    user: Annotated[User, Depends(require_role("admin", "authorizor"))],
     file: UploadFile = File(...),
 ):
     emp = await db.scalar(select(Employee).where(Employee.code == code))
@@ -73,12 +73,16 @@ async def upload_employee_face(
         raise NotFound("Employee not found")
 
     os.makedirs("uploads/faces", exist_ok=True)
-    # Store with a clean filename: <code>_<original_name>
-    safe_name = f"{code}_{file.filename}".replace(" ", "_")
-    file_path = f"uploads/faces/{safe_name}"
-    content = await file.read()
+    safe_code = "".join(c for c in code if c.isalnum() or c in ("-", "_"))
+    safe_filename = "".join(c for c in (file.filename or "") if c.isalnum() or c in ("-", "_", "."))
+    if not safe_filename:
+        safe_filename = "photo.jpg"
+    safe_name = f"{safe_code}_{safe_filename}"
+    file_path = os.path.join("uploads", "faces", safe_name)
+    
     with open(file_path, "wb") as f:
-        f.write(content)
+        while chunk := await file.read(1024 * 1024):
+            f.write(chunk)
 
     return {"message": "Face photo saved. Edge nodes will pick it up on next sync.", "path": file_path}
 
@@ -86,7 +90,7 @@ async def upload_employee_face(
 @router.patch("/{code}", response_model=EmployeeOut)
 async def update_employee(
     code: str, body: EmployeeUpdate, db: SessionDep,
-    user: Annotated[User, Depends(require_role("admin"))],
+    user: Annotated[User, Depends(require_role("admin", "authorizor"))],
 ):
     emp = await db.scalar(select(Employee).where(Employee.code == code))
     if emp is None:
@@ -101,7 +105,7 @@ async def update_employee(
 @router.delete("/{code}", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_employee(
     code: str, db: SessionDep,
-    user: Annotated[User, Depends(require_role("admin"))],
+    user: Annotated[User, Depends(require_role("admin", "authorizor"))],
     hard: bool = Query(False),
 ):
     emp = await db.scalar(select(Employee).where(Employee.code == code))

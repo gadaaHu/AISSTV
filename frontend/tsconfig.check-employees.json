@@ -1,0 +1,10 @@
+{
+  "//": "Scoped check for the Employees work: includes only those files, so it does not fail on pages another agent is still writing.",
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/pages/Employees.tsx",
+    "src/components/employees",
+    "src/hooks/queries/useEmployees.ts",
+    "src/vite-env.d.ts"
+  ]
+}

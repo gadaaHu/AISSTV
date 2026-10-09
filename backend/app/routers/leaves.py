@@ -108,7 +108,7 @@ async def create_leave(body: LeaveIn, db: SessionDep, _: CurrentUser):
 @router.patch("/{leave_id}/review", response_model=LeaveOut)
 async def review_leave(
     leave_id: str, body: LeaveReviewIn, db: SessionDep,
-    user: Annotated[User, Depends(require_role("admin", "manager"))],
+    user: Annotated[User, Depends(require_role("admin", "manager", "authorizor"))],
 ):
     if body.status not in ("approved", "rejected"):
         raise BadRequest("status must be 'approved' or 'rejected'")

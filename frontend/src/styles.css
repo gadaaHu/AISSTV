@@ -1,0 +1,282 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import "tailwindcss";
+
+/*
+ * Class-based dark mode.
+ *
+ * Tailwind 4 defaults `dark:` to `prefers-color-scheme`; the app needs an
+ * explicit override so the in-app theme toggle can win. `index.html` sets
+ * `.dark` on <html> before first paint.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+    monospace;
+
+  /* Brand scale — original blue kept for status badge visual distinctiveness */
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-200: #bfdbfe;
+  --color-brand-300: #93c5fd;
+  --color-brand-400: #60a5fa;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-800: #1e40af;
+  --color-brand-900: #1e3a8a;
+  --color-brand-950: #172554;
+
+  /* ── Gemini palette ─────────────────────────────────────────────────────── */
+  --color-gemini-blue:   #4285f4;
+  --color-gemini-red:    #ea4335;
+  --color-gemini-yellow: #fbbc04;
+  --color-gemini-green:  #34a853;
+  --color-gemini-purple: #a142f4;
+  --color-gemini-cyan:   #24c1e0;
+}
+
+/* ── Gemini animated border keyframes ─────────────────────────────────────── */
+@keyframes gemini-spin {
+  0%   { --gemini-angle: 0deg; }
+  100% { --gemini-angle: 360deg; }
+}
+
+@keyframes gemini-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+
+@keyframes gemini-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes float-up {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-4px); }
+}
+
+@property --gemini-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--color-slate-50);
+    color: var(--color-slate-900);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .dark body {
+    background-color: var(--color-slate-950);
+    color: var(--color-slate-100);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    body {
+      transition:
+        background-color 150ms ease,
+        color 150ms ease;
+    }
+  }
+
+  /* A single, consistent focus ring for keyboard users. */
+  :focus-visible {
+    outline: 2px solid var(--color-gemini-blue);
+    outline-offset: 2px;
+  }
+
+  /* Remove the outline where focus is already obvious. */
+  [data-focus-ring="none"]:focus-visible {
+    outline: none;
+  }
+}
+
+/* ── Gemini animated border utility ──────────────────────────────────────── */
+/*
+ * Usage: add class `gemini-border` to any element that needs the rotating
+ * rainbow border. The element MUST have `position: relative` and
+ * `overflow: hidden` (or use `gemini-border-card` below).
+ *
+ * Implementation: a `::before` pseudo-element draws a conic-gradient that
+ * spins via the custom `--gemini-angle` property (registered above so the
+ * browser can interpolate it). A `::after` pseudo-element covers the inside
+ * with the card background color, producing a border-only effect.
+ */
+@layer utilities {
+  .gemini-border {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .gemini-border::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    z-index: -1;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--gemini-angle),
+      #4285f4,  /* blue   */
+      #a142f4,  /* purple */
+      #ea4335,  /* red    */
+      #fbbc04,  /* yellow */
+      #34a853,  /* green  */
+      #24c1e0,  /* cyan   */
+      #4285f4   /* blue   — close the loop */
+    );
+    animation: gemini-spin 4s linear infinite;
+  }
+
+  /* Dark background fill for the card interior */
+  .gemini-border::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    z-index: -1;
+    border-radius: calc(var(--radius, 0.75rem) - 2px);
+    background: white;
+  }
+
+  .dark .gemini-border::after {
+    background: rgb(15 23 42); /* slate-950 */
+  }
+
+  /* ── Card variant: rounded-xl card with gemini border ───────────────── */
+  .gemini-border-card {
+    position: relative;
+    isolation: isolate;
+    border-radius: 0.75rem; /* rounded-xl */
+  }
+
+  .gemini-border-card::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    z-index: -1;
+    border-radius: 0.875rem; /* xl + 2px */
+    background: conic-gradient(
+      from var(--gemini-angle),
+      #4285f4,
+      #a142f4,
+      #ea4335,
+      #fbbc04,
+      #34a853,
+      #24c1e0,
+      #4285f4
+    );
+    animation: gemini-spin 4s linear infinite;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .gemini-border-card:hover::before {
+    opacity: 1;
+  }
+
+  .gemini-border-card::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    z-index: -1;
+    border-radius: 0.625rem; /* xl - 2px */
+    background: white;
+  }
+
+  .dark .gemini-border-card::after {
+    background: rgb(15 23 42 / 1); /* slate-950 */
+  }
+
+  /* ── Gemini shimmer text ─────────────────────────────────────────────── */
+  .gemini-text {
+    background: linear-gradient(
+      90deg,
+      #4285f4,
+      #a142f4,
+      #ea4335,
+      #fbbc04,
+      #34a853,
+      #24c1e0,
+      #4285f4
+    );
+    background-size: 200% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gemini-shimmer 3s linear infinite;
+  }
+
+  /* ── Gemini glow on icons ────────────────────────────────────────────── */
+  .gemini-icon-glow {
+    filter: drop-shadow(0 0 6px #4285f4aa);
+    transition: filter 0.3s ease;
+  }
+
+  .gemini-icon-glow:hover {
+    filter: drop-shadow(0 0 10px #a142f4cc);
+  }
+
+  /* ── Logo float animation ────────────────────────────────────────────── */
+  .gemini-float {
+    animation: float-up 3s ease-in-out infinite;
+  }
+
+  /* ── Sidebar active item Gemini glow ─────────────────────────────────── */
+  .gemini-nav-active {
+    background: linear-gradient(135deg, #2563eb, #4285f4, #a142f4);
+    box-shadow: 0 0 12px 0 rgba(66, 133, 244, 0.4);
+  }
+
+  /* ── Gemini gradient button ──────────────────────────────────────────── */
+  .gemini-btn {
+    background: linear-gradient(135deg, #4285f4, #a142f4);
+    color: white;
+    transition:
+      filter 0.2s ease,
+      transform 0.15s ease;
+  }
+
+  .gemini-btn:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+  }
+
+  .gemini-btn:active {
+    transform: translateY(0);
+  }
+
+  /* ── Sidebar gradient bg ─────────────────────────────────────────────── */
+  .gemini-sidebar {
+    background: linear-gradient(180deg, #0c1929 0%, #0f172a 60%, #111827 100%);
+  }
+
+  /* ── Metric card tones with Gemini influence ─────────────────────────── */
+  .gemini-metric-brand {
+    background: linear-gradient(135deg, rgba(66,133,244,0.12), rgba(161,66,244,0.08));
+    border-color: rgba(66,133,244,0.25);
+  }
+
+  .dark .gemini-metric-brand {
+    background: linear-gradient(135deg, rgba(66,133,244,0.15), rgba(161,66,244,0.10));
+    border-color: rgba(66,133,244,0.30);
+  }
+}
