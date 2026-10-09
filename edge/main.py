@@ -171,6 +171,8 @@ def main():
         min_confidence_for_enter=cfg["attendance"].get("min_confidence_for_enter", 0.45),
         unknown_alert_sec=cfg["attendance"].get("unknown_alert_sec", 5),
         timezone_name=cfg["attendance"].get("timezone", "Africa/Addis_Ababa"),
+        debounce_hours=float(cfg["attendance"].get("cooldown_hours", cfg["attendance"].get("debounce_hours", 16.0))),
+        db_path=f"cooldown-{cfg['camera']['id']}.db",
     )
 
     # --- announce online ---
@@ -262,26 +264,26 @@ def main():
                     # ---- 3a. face cache check ----
                     now = time.time()
                     cached = face_cache.get(tid)
-                    if cached and (now - cached[2]) < face_cache_ttl:
-                        eid, conf = cached[0], cached[1]
+                    if cached and (now - cached[3]) < face_cache_ttl:
+                        eid, conf, unknown_id = cached[0], cached[1], cached[2]
                     else:
                         # ---- 3b. crop and identify ----
                         crop = frame[max(0, y1):y2, max(0, x1):x2]
                         if crop.size == 0:
                             continue
                         try:
-                            eid, conf = face.identify(crop)
+                            eid, conf, unknown_id = face.identify_with_unknown(crop)
                             stats.face_calls += 1
                             if eid:
                                 stats.face_hits += 1
                         except Exception:
                             stats.errors += 1
                             log.exception("Face identify error")
-                            eid, conf = None, 0.0
-                        face_cache[tid] = (eid, conf, now)
+                            eid, conf, unknown_id = None, 0.0, None
+                        face_cache[tid] = (eid, conf, unknown_id, now)
 
                     # ---- 4. rules ----
-                    events += rules.update(tid, eid, conf)
+                    events += rules.update(tid, eid, conf, unknown_id=unknown_id)
 
             # ---- 5. sweep (1 Hz) ----
             if time.time() - last_sweep > 1.0:

@@ -1,7 +1,7 @@
 import asyncio
 import json
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import paho.mqtt.client as mqtt
 from sqlalchemy import select
@@ -131,9 +131,22 @@ async def _upsert_attendance(db, ev: Event) -> None:
         select(Attendance).where(Attendance.employee_code == ev.employee_code,
                                   Attendance.day == day))
     if att is None:
-        att = Attendance(employee_code=ev.employee_code, day=day, status="present")
-        db.add(att)
-        STATS.attendance_created += 1
+        # Check if this employee already checked in within the last 16 hours (suppress duplicate daily rows)
+        cutoff_16h = ev.ts - timedelta(hours=16)
+        recent_att = await db.scalar(
+            select(Attendance)
+            .where(
+                Attendance.employee_code == ev.employee_code,
+                Attendance.check_in >= cutoff_16h,
+            )
+            .order_by(Attendance.check_in.desc())
+        )
+        if recent_att is not None:
+            att = recent_att
+        else:
+            att = Attendance(employee_code=ev.employee_code, day=day, status="present")
+            db.add(att)
+            STATS.attendance_created += 1
 
     if ev.type in ("ENTER", "LATE"):
         if att.check_in is None or ev.ts < att.check_in:

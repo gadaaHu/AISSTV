@@ -19,6 +19,7 @@ attendance:
   shift_start: "09:00"
   grace_minutes: 15
   exit_timeout_sec: 20
+  cooldown_hours: 16
   timezone: Africa/Addis_Ababa
 
 display:

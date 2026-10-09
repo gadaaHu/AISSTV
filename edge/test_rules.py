@@ -3,7 +3,7 @@ Simulate a morning at the office with no camera involved.
 Run:  python test_rules.py
 """
 import time
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time as dtime, timedelta, timezone
 from rules_engine import RulesEngine, _now
 
 # Speed up: pretend 1 real second = 1 simulated second (you can shrink further)
@@ -118,10 +118,89 @@ def scenario_unknown():
         time.sleep(0.2)
 
 
+def scenario_16h_cooldown():
+    print("\n" + "=" * 60)
+    print("SCENARIO 6: 16-hour cooldown for recognized and unknown faces")
+    print("=" * 60)
+    engine6 = RulesEngine(
+        "cam-test", "door",
+        exit_timeout_sec=1,
+        unknown_alert_sec=1,
+        min_frames_for_enter=1,
+        debounce_hours=16.0,
+    )
+
+    # 1. Recognized employee: first arrival -> ENTER
+    print("1a. Employee arrives at 09:00 (first arrival):")
+    evts1 = engine6.update(1, "emp-999", 0.85)
+    for e in evts1:
+        print(f"  >> {e['type']:10s} emp={e['employee_id']}")
+    assert any(e["type"] == "ENTER" for e in evts1), "First arrival must emit ENTER"
+
+    # 2. Same employee returns 2 hours later -> MUST NOT count again (no ENTER)
+    print("1b. Employee returns 2 hours later (within 16h window):")
+    evts2 = engine6.update(2, "emp-999", 0.85)
+    for e in evts2:
+        print(f"  >> {e['type']:10s} emp={e['employee_id']} suppressed={e['meta'].get('suppressed_within_16h')}")
+    assert not any(e["type"] == "ENTER" for e in evts2), "Within 16h must NOT emit duplicate ENTER"
+    assert any(e["type"] == "RE_ENTER" for e in evts2), "Within 16h should emit RE_ENTER"
+
+    # 3. Simulate 16.5 hours later -> MUST count again (emits ENTER)
+    print("1c. Employee arrives 17 hours later (after 16h cooldown):")
+    engine6._counted_faces["emp-999"] = _now() - timedelta(hours=17)
+    evts3 = engine6.update(3, "emp-999", 0.85)
+    for e in evts3:
+        print(f"  >> {e['type']:10s} emp={e['employee_id']}")
+    assert any(e["type"] == "ENTER" for e in evts3), "After 16h must emit ENTER again"
+
+    # 4. Unknown face: first appearance -> UNKNOWN alert
+    print("\n2a. Unknown face loiters for > 1 sec (first appearance):")
+    t0 = time.time()
+    unknown_evts1 = []
+    while time.time() - t0 < 1.5:
+        unknown_evts1.extend(engine6.update(50, None, 0.0, unknown_id="unknown_xyz123"))
+        time.sleep(0.1)
+    for e in unknown_evts1:
+        print(f"  >> {e['type']:10s} unknown_id={e['meta'].get('unknown_id')}")
+    assert any(e["type"] == "UNKNOWN" for e in unknown_evts1), "First unknown encounter must emit UNKNOWN"
+
+    # Reset track via sweep
+    time.sleep(1.2)
+    engine6.sweep()
+
+    # 5. Same unknown face returns 3 hours later -> MUST NOT count again (suppressed)
+    print("2b. Same unknown face returns 3 hours later (within 16h window):")
+    t0 = time.time()
+    unknown_evts2 = []
+    while time.time() - t0 < 1.5:
+        unknown_evts2.extend(engine6.update(51, None, 0.0, unknown_id="unknown_xyz123"))
+        time.sleep(0.1)
+    for e in unknown_evts2:
+        print(f"  >> {e['type']:10s}")
+    assert len(unknown_evts2) == 0, f"Same unknown face within 16h must be SUPPRESSED, got {unknown_evts2}"
+    print("  >> [SUCCESS] UNKNOWN alert suppressed within 16-hour window!")
+
+    # 6. Same unknown face returns 17 hours later -> MUST count again (emits UNKNOWN)
+    print("2c. Same unknown face returns 17 hours later (after 16h cooldown):")
+    engine6._counted_faces["unknown_xyz123"] = _now() - timedelta(hours=17)
+    time.sleep(1.2)
+    engine6.sweep()
+    t0 = time.time()
+    unknown_evts3 = []
+    while time.time() - t0 < 1.5:
+        unknown_evts3.extend(engine6.update(52, None, 0.0, unknown_id="unknown_xyz123"))
+        time.sleep(0.1)
+    for e in unknown_evts3:
+        print(f"  >> {e['type']:10s} unknown_id={e['meta'].get('unknown_id')}")
+    assert any(e["type"] == "UNKNOWN" for e in unknown_evts3), "After 16h must emit UNKNOWN again"
+    print("  >> [SUCCESS] UNKNOWN alert counted again after 16 hours!")
+
+
 if __name__ == "__main__":
     scenario_simple_present()
     scenario_jittery_face()
     scenario_late_arrival()
     scenario_reentry()
     scenario_unknown()
-    print("\nAll scenarios completed.")
+    scenario_16h_cooldown()
+    print("\nAll scenarios completed successfully.")

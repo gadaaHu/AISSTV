@@ -1,7 +1,10 @@
+import uuid
+import time
 import numpy as np
 import cv2
 import logging
 from pathlib import Path
+from typing import Optional
 from insightface.app import FaceAnalysis
 
 log = logging.getLogger(__name__)
@@ -35,7 +38,11 @@ class FaceEngine:
 
         # employee_id -> np.ndarray shape (512,) L2-normalized
         self.gallery: dict[str, np.ndarray] = {}
-        log.info("FaceEngine ready (threshold=%.2f, gpu=%s)", threshold, use_gpu)
+
+        # unknown_id -> (np.ndarray shape (512,), last_seen_ts)
+        self.unknown_gallery: dict[str, tuple[np.ndarray, float]] = {}
+        self.unknown_ttl_seconds: float = 16.0 * 3600.0  # 16-hour suppression window
+        log.info("FaceEngine ready (threshold=%.2f, gpu=%s, unknown_window=16h)", threshold, use_gpu)
 
     # ------------------------------------------------------------------ utils
     @staticmethod
@@ -103,29 +110,68 @@ class FaceEngine:
         return True
 
     # ------------------------------------------------------------------ identify
-    def identify(self, person_crop_bgr: np.ndarray):
+    def identify_with_unknown(
+        self, person_crop_bgr: np.ndarray
+    ) -> tuple[Optional[str], float, Optional[str]]:
+        """
+        Identify a person crop.
+        Returns:
+            (employee_id, similarity_score, unknown_id)
+            - If recognized employee: (employee_id, confidence, None)
+            - If unknown face: (None, confidence, unknown_id)
+            - If no face found: (None, 0.0, None)
+        Unknown faces are clustered and matched using face embeddings within a 16-hour window.
+        """
+        res = self._embed_from_bgr(person_crop_bgr)
+        if res is None:
+            return None, 0.0, None
+        emb, _ = res
+
+        # 1. Check enrolled employee gallery
+        best_id, best_score = None, -1.0
+        if self.gallery:
+            for eid, g in self.gallery.items():
+                s = float(np.dot(emb, g))
+                if s > best_score:
+                    best_score, best_id = s, eid
+
+        if best_score >= self.threshold and best_id is not None:
+            return best_id, best_score, None
+
+        # 2. Unknown face matching with 16-hour memory
+        now_ts = time.time()
+        cutoff = now_ts - self.unknown_ttl_seconds
+
+        # Prune expired unknown faces older than 16 hours
+        expired = [uid for uid, (_, ts) in self.unknown_gallery.items() if ts < cutoff]
+        for uid in expired:
+            del self.unknown_gallery[uid]
+
+        best_uid = None
+        best_u_score = -1.0
+        for uid, (u_emb, _) in self.unknown_gallery.items():
+            s = float(np.dot(emb, u_emb))
+            if s > best_u_score:
+                best_u_score, best_uid = s, uid
+
+        if best_u_score >= self.threshold and best_uid is not None:
+            # Matched previously seen unknown face within 16-hour window
+            self.unknown_gallery[best_uid] = (emb, now_ts)
+            return None, max(best_score, 0.0), best_uid
+        else:
+            # New unknown face seen for the first time
+            new_uid = f"unknown_{uuid.uuid4().hex[:8]}"
+            self.unknown_gallery[new_uid] = (emb, now_ts)
+            return None, max(best_score, 0.0), new_uid
+
+    def identify(self, person_crop_bgr: np.ndarray) -> tuple[Optional[str], float]:
         """
         Identify a person crop (the YOLO box, not just the head).
         Returns (employee_id | None, similarity_score).
+        Maintains backward compatibility with callers expecting 2-tuple.
         """
-        if not self.gallery:
-            return None, 0.0
-
-        res = self._embed_from_bgr(person_crop_bgr)
-        if res is None:
-            return None, 0.0
-        emb, _ = res
-
-        # cosine similarity — gallery vectors are unit length, so dot product = cosine
-        best_id, best_score = None, -1.0
-        for eid, g in self.gallery.items():
-            s = float(np.dot(emb, g))
-            if s > best_score:
-                best_score, best_id = s, eid
-
-        if best_score < self.threshold:
-            return None, best_score
-        return best_id, best_score
+        eid, score, _ = self.identify_with_unknown(person_crop_bgr)
+        return eid, score
 
     # ------------------------------------------------------------------ persist
     def save(self, path: str | Path = "gallery.npz"):
